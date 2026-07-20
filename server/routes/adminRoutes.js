@@ -40,7 +40,8 @@ router.get(['/dashboard-stats', '/dashboard'], async (req, res, next) => {
 // GET /api/admin/students
 router.get('/students', async (req, res, next) => {
   try {
-    const students = await getAllStudents();
+    const query = req.query.query || req.query.q || '';
+    const students = await getAllStudents(query);
     return res.json(students);
   } catch (error) {
     next(error);

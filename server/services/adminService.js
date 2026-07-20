@@ -52,16 +52,43 @@ export const getDashboardStats = async () => {
   };
 };
 
-export const getAllStudents = async () => {
+export const getAllStudents = async (queryStr = '') => {
+  const q = (queryStr || '').trim();
+
   if (mongoose.connection.readyState === 1) {
-    const students = await User.find({ role: 'student' }).select('-password').sort({ fullName: 1 });
-    return students;
+    let filter = { role: 'student' };
+    if (q) {
+      filter.$or = [
+        { registrationNumber: new RegExp(q, 'i') },
+        { fullName: new RegExp(q, 'i') }
+      ];
+    }
+    const students = await User.find(filter).select('-password').sort({ fullName: 1 }).lean();
+    return students.map(s => ({
+      id: s._id.toString(),
+      _id: s._id.toString(),
+      fullName: s.fullName,
+      regNumber: s.registrationNumber || s.regNumber,
+      registrationNumber: s.registrationNumber || s.regNumber,
+      role: s.role,
+      section: s.section || 'A',
+      batch: s.batch || '1',
+      branch: s.branch || 'CSE'
+    }));
   }
 
   // Memory DB Fallback
   return Object.values(memoryStore.users)
-    .filter((u) => u.role === 'student')
-    .map(({ password, ...rest }) => rest);
+    .filter((u) => u.role === 'student' && (
+      !q ||
+      (u.registrationNumber && u.registrationNumber.toUpperCase().includes(q.toUpperCase())) ||
+      (u.fullName && u.fullName.toLowerCase().includes(q.toLowerCase()))
+    ))
+    .map(({ password, ...u }) => ({
+      ...u,
+      regNumber: u.registrationNumber || u.regNumber,
+      registrationNumber: u.registrationNumber || u.regNumber
+    }));
 };
 
 export const getStudentById = async (studentIdOrReg) => {
@@ -72,16 +99,29 @@ export const getStudentById = async (studentIdOrReg) => {
 
   if (mongoose.connection.readyState === 1) {
     if (mongoose.Types.ObjectId.isValid(studentIdOrReg)) {
-      student = await User.findById(studentIdOrReg).select('-password');
+      student = await User.findById(studentIdOrReg).select('-password').lean();
     }
     if (!student) {
-      student = await User.findOne({ registrationNumber: studentIdOrReg.toUpperCase() }).select('-password');
+      student = await User.findOne({ registrationNumber: studentIdOrReg.toUpperCase() }).select('-password').lean();
     }
 
     if (student) {
       const tt = await Timetable.findOne({ userId: student._id });
       timetable = safeFlattenTimetableDoc(tt);
-      return { student, timetable, labs, attendance };
+
+      const profile = {
+        id: student._id.toString(),
+        _id: student._id.toString(),
+        fullName: student.fullName,
+        regNumber: student.registrationNumber || student.regNumber,
+        registrationNumber: student.registrationNumber || student.regNumber,
+        role: student.role,
+        section: student.section || 'A',
+        batch: student.batch || '1',
+        branch: student.branch || 'CSE'
+      };
+
+      return { student: profile, timetable, labs, attendance };
     }
   }
 
@@ -92,7 +132,12 @@ export const getStudentById = async (studentIdOrReg) => {
       const { password, ...st } = u;
       const memTt = memoryStore.timetables[u._id] || {};
       timetable = safeFlattenTimetableDoc(memTt);
-      return { student: st, timetable, labs, attendance };
+      const profile = {
+        ...st,
+        regNumber: st.registrationNumber || st.regNumber,
+        registrationNumber: st.registrationNumber || st.regNumber
+      };
+      return { student: profile, timetable, labs, attendance };
     }
   }
 
@@ -116,13 +161,13 @@ export const searchStudentForIdeaLab = async (queryStr) => {
         { registrationNumber: new RegExp(q, 'i') },
         { fullName: new RegExp(q, 'i') }
       ]
-    }).select('-password');
+    }).select('-password').lean();
 
     if (!students || students.length === 0) {
       throw new Error(`No student found matching "${q}".`);
     }
 
-    const student = students.find(s => s.registrationNumber.toUpperCase() === qUpper) || students[0];
+    const student = students.find(s => (s.registrationNumber || '').toUpperCase() === qUpper) || students[0];
 
     const tt = await Timetable.findOne({ userId: student._id });
     const timetable = safeFlattenTimetableDoc(tt);
@@ -135,9 +180,11 @@ export const searchStudentForIdeaLab = async (queryStr) => {
     const markedSlots = markedRecords.map(r => r.slot);
 
     const profile = {
-      id: student._id,
+      id: student._id.toString(),
+      _id: student._id.toString(),
       fullName: student.fullName,
       regNumber: student.registrationNumber,
+      registrationNumber: student.registrationNumber,
       role: student.role,
       section: student.section || 'A',
       batch: student.batch || '1',
@@ -149,9 +196,10 @@ export const searchStudentForIdeaLab = async (queryStr) => {
       timetable,
       markedSlots,
       matchingStudents: students.map(s => ({
-        id: s._id,
+        id: s._id.toString(),
         fullName: s.fullName,
         regNumber: s.registrationNumber,
+        registrationNumber: s.registrationNumber,
         section: s.section,
         branch: s.branch
       }))
@@ -161,8 +209,8 @@ export const searchStudentForIdeaLab = async (queryStr) => {
   // Memory DB Fallback
   const matching = Object.values(memoryStore.users).filter(u => 
     u.role === 'student' && (
-      u.registrationNumber.toUpperCase().includes(qUpper) || 
-      u.fullName.toLowerCase().includes(q.toLowerCase())
+      (u.registrationNumber && u.registrationNumber.toUpperCase().includes(qUpper)) || 
+      (u.fullName && u.fullName.toLowerCase().includes(q.toLowerCase()))
     )
   );
 
@@ -183,6 +231,7 @@ export const searchStudentForIdeaLab = async (queryStr) => {
       id: student._id,
       fullName: student.fullName,
       regNumber: student.registrationNumber,
+      registrationNumber: student.registrationNumber,
       role: student.role,
       section: student.section || 'A',
       batch: student.batch || '1',
@@ -194,6 +243,7 @@ export const searchStudentForIdeaLab = async (queryStr) => {
       id: s._id,
       fullName: s.fullName,
       regNumber: s.registrationNumber,
+      registrationNumber: s.registrationNumber,
       section: s.section,
       branch: s.branch
     }))

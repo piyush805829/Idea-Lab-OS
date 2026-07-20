@@ -201,6 +201,8 @@ export const AdminView: React.FC = () => {
 
   // Expand student dropdown arrow in Attendance tab
   const handleToggleExpandStudent = async (regNumber: string) => {
+    if (!regNumber) return;
+
     if (expandedStudentReg === regNumber) {
       setExpandedStudentReg(null);
       setExpandedStudentData(null);
@@ -218,7 +220,7 @@ export const AdminView: React.FC = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ regNumber })
+        body: JSON.stringify({ regNumber, query: regNumber })
       });
       if (res.ok) {
         const data = await res.json();
@@ -388,11 +390,13 @@ export const AdminView: React.FC = () => {
     { id: 'audit', name: 'Audit Logs', icon: ShieldCheck },
   ];
 
-  const filteredAttendanceStudents = studentsList.filter(st => 
-    !ideaLabSearchFilter || 
-    st.fullName.toLowerCase().includes(ideaLabSearchFilter.toLowerCase()) || 
-    st.regNumber.toUpperCase().includes(ideaLabSearchFilter.toUpperCase())
-  );
+  const filteredAttendanceStudents = studentsList.filter(st => {
+    const filter = ideaLabSearchFilter.trim().toLowerCase();
+    if (!filter) return true;
+    const name = (st.fullName || '').toLowerCase();
+    const reg = (st.regNumber || (st as any).registrationNumber || '').toLowerCase();
+    return name.includes(filter) || reg.includes(filter);
+  });
 
   return (
     <div className="space-y-6 animate-fadeIn pb-16">
@@ -630,7 +634,10 @@ export const AdminView: React.FC = () => {
                 <input
                   type="text"
                   value={ideaLabSearchFilter}
-                  onChange={(e) => setIdeaLabSearchFilter(e.target.value)}
+                  onChange={(e) => {
+                    setIdeaLabSearchFilter(e.target.value);
+                    fetchStudents(e.target.value);
+                  }}
                   placeholder="Filter student list by Name or Registration Number (e.g. Piyush or PCEA25CS123)..."
                   className="w-full pl-9 pr-3 py-2 bg-campus-bg-light dark:bg-campus-bg-dark border border-campus-border-light dark:border-campus-border-dark rounded-lg text-xs font-medium focus:outline-none"
                 />
@@ -653,16 +660,17 @@ export const AdminView: React.FC = () => {
             <div className="space-y-2.5">
               {filteredAttendanceStudents.length === 0 ? (
                 <div className="p-8 text-center border border-dashed border-campus-border-light dark:border-campus-border-dark rounded-xl">
-                  <p className="text-xs text-campus-secondary-light dark:text-campus-secondary-dark">No students found.</p>
+                  <p className="text-xs text-campus-secondary-light dark:text-campus-secondary-dark">No students found matching "{ideaLabSearchFilter}".</p>
                 </div>
               ) : (
-                filteredAttendanceStudents.map((st) => {
-                  const isChecked = selectedStudentRegs.includes(st.regNumber);
-                  const isExpanded = expandedStudentReg === st.regNumber;
+                filteredAttendanceStudents.map((st, idx) => {
+                  const regNum = st.regNumber || (st as any).registrationNumber || st.fullName || `st-${idx}`;
+                  const isChecked = selectedStudentRegs.includes(regNum);
+                  const isExpanded = expandedStudentReg === regNum;
 
                   return (
                     <div 
-                      key={st.regNumber}
+                      key={regNum}
                       className={`border rounded-xl transition-all ${
                         isChecked 
                           ? 'border-blue-500 bg-blue-500/5 dark:bg-blue-500/10' 
@@ -675,7 +683,7 @@ export const AdminView: React.FC = () => {
                           {/* Checkbox */}
                           <button
                             type="button"
-                            onClick={() => handleToggleSelectStudent(st.regNumber)}
+                            onClick={() => handleToggleSelectStudent(regNum)}
                             className="p-1 hover:opacity-80 transition"
                           >
                             {isChecked ? (
@@ -689,7 +697,7 @@ export const AdminView: React.FC = () => {
                             <div className="flex items-center gap-2">
                               <h4 className="text-xs font-bold">{st.fullName}</h4>
                               <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-black/5 dark:bg-white/10 rounded">
-                                {st.regNumber}
+                                {regNum}
                               </span>
                             </div>
                             <p className="text-[10px] text-campus-secondary-light dark:text-campus-secondary-dark font-medium mt-0.5">
@@ -700,7 +708,7 @@ export const AdminView: React.FC = () => {
 
                         {/* Dropdown Arrow Toggle Button */}
                         <button
-                          onClick={() => handleToggleExpandStudent(st.regNumber)}
+                          onClick={() => handleToggleExpandStudent(regNum)}
                           className="flex items-center gap-1 px-3 py-1.5 bg-campus-bg-light dark:bg-campus-bg-dark border border-campus-border-light dark:border-campus-border-dark rounded-lg text-xs font-semibold hover:bg-black/5 dark:hover:bg-white/5 transition"
                         >
                           <span>{isExpanded ? 'Hide Classes' : 'View Schedule'}</span>
