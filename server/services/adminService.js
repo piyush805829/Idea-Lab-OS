@@ -361,3 +361,32 @@ export const getIdeaLabReports = async () => {
 
   return formattedReport;
 };
+
+export const batchMarkIdeaLabAttendance = async ({ regNumbers, reason, subject, teacher, room, slot, markedBy }) => {
+  if (!Array.isArray(regNumbers) || regNumbers.length === 0) {
+    throw new Error('At least one student registration number is required.');
+  }
+
+  const results = [];
+  for (const reg of regNumbers) {
+    try {
+      const rec = await markIdeaLabAttendance({
+        regNumber: reg,
+        reason,
+        subject,
+        teacher,
+        room,
+        slot,
+        markedBy
+      });
+      results.push(rec);
+    } catch (e) {
+      console.warn(`Failed to mark attendance for ${reg}:`, e.message);
+    }
+  }
+
+  return {
+    count: results.length,
+    records: results
+  };
+};

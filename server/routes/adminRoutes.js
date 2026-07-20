@@ -6,6 +6,7 @@ import {
   getStudentById, 
   searchStudentForIdeaLab,
   markIdeaLabAttendance, 
+  batchMarkIdeaLabAttendance,
   cancelIdeaLabAttendance,
   getIdeaLabReports 
 } from '../services/adminService.js';
@@ -123,6 +124,35 @@ router.post(['/attendance', '/idealab/mark'], async (req, res, next) => {
       success: true,
       message: `Idea Lab attendance marked for ${targetReg.toUpperCase()}`,
       record
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/admin/idealab/batch-mark
+router.post('/idealab/batch-mark', async (req, res, next) => {
+  try {
+    const { regNumbers, reason, subject, teacher, room, slot } = req.body;
+
+    if (!Array.isArray(regNumbers) || regNumbers.length === 0) {
+      return res.status(400).json({ success: false, message: 'Please select at least one student.' });
+    }
+
+    const result = await batchMarkIdeaLabAttendance({
+      regNumbers,
+      reason,
+      subject,
+      teacher,
+      room,
+      slot: slot || 'Slot 1',
+      markedBy: req.user.id
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: `Idea Lab attendance marked for ${result.count} student(s).`,
+      count: result.count
     });
   } catch (error) {
     next(error);
