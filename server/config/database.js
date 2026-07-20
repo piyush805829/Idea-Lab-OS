@@ -8,7 +8,7 @@ const connectDB = async () => {
       process.exit(1);
     }
 
-    console.log('✓ Connecting to MongoDB...');
+    console.log('Connecting to MongoDB...');
 
     mongoose.set('strictQuery', true);
 
@@ -16,12 +16,12 @@ const connectDB = async () => {
       serverSelectionTimeoutMS: 10000
     });
 
-    console.log('✓ MongoDB Connected Successfully');
+    console.log('MongoDB Connected Successfully');
     return conn;
   } catch (error) {
     console.error('❌ MongoDB Connection Error:', error.message);
     if (error.message.includes('Authentication failed') || error.message.includes('bad auth')) {
-      console.error('⚠️  Authentication Failed: Please check your MongoDB Atlas Database User password in server/.env');
+      console.error('⚠️  Authentication Failed: Please check your MONGODB_URI in environment variables.');
     }
     process.exit(1);
   }

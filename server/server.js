@@ -29,6 +29,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
+const NODE_ENV = process.env.NODE_ENV || 'development';
 
 // Security & Optimization Middleware
 app.use(helmet({ contentSecurityPolicy: false }));
@@ -37,7 +38,7 @@ app.use(cors({
   credentials: true
 }));
 app.use(compression());
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+app.use(morgan(NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -114,11 +115,15 @@ app.use(errorHandler);
 
 // Connect to MongoDB Atlas and Start Server
 const startServer = async () => {
+  console.log('================================');
+  console.log('Starting IdeaLab OS Backend...');
   await connectDB();
   await seedTestingAccounts();
 
   app.listen(PORT, () => {
-    console.log(`✓ Server Running on Port ${PORT}`);
+    console.log(`Server running on Port ${PORT}`);
+    console.log(`Environment: ${NODE_ENV}`);
+    console.log('================================');
   });
 };
 
