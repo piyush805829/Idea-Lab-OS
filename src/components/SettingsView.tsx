@@ -51,10 +51,10 @@ export const SettingsView: React.FC = () => {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const text = event.target?.result as string;
-        const success = importBackup(text);
+        const success = await importBackup(text);
         if (success) {
           setImportStatus('success');
           setTimeout(() => setImportStatus('idle'), 4000);

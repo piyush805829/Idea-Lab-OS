@@ -51,7 +51,7 @@ interface ScheduleContextType {
   refreshIncomingShared: () => Promise<void>;
 
   // Backups
-  importBackup: (jsonData: string) => boolean;
+  importBackup: (jsonData: string) => Promise<boolean>;
   exportScheduleData: () => string;
   resetAllData: () => void;
 }
@@ -453,14 +453,55 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  const importBackup = (jsonData: string): boolean => {
+  const importBackup = async (jsonData: string): Promise<boolean> => {
     try {
       const parsed = JSON.parse(jsonData);
-      if (parsed.timetable) {
-        setData(prev => ({ ...prev, timetable: parsed.timetable }));
+
+      let newTimetable = parsed.timetable || (parsed.data && parsed.data.timetable) || null;
+      let newLabs = parsed.labs || (parsed.data && parsed.data.labs) || data.labs;
+      let newAttendance = parsed.attendance || (parsed.data && parsed.data.attendance) || data.attendance;
+
+      // If JSON is direct timetable dictionary object
+      if (!newTimetable && typeof parsed === 'object') {
+        const keys = Object.keys(parsed);
+        const isTimetableDict = keys.some(k => k.includes('-') || ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].some(d => k.toLowerCase().startsWith(d)));
+        if (isTimetableDict) {
+          newTimetable = parsed;
+        }
+      }
+
+      if (newTimetable && typeof newTimetable === 'object') {
+        setData(prev => ({
+          ...prev,
+          timetable: newTimetable,
+          labs: newLabs,
+          attendance: newAttendance
+        }));
+
+        markSaving();
+
+        // Persist imported timetable to MongoDB Atlas database
+        const activeToken = token || localStorage.getItem('campusos-token') || localStorage.getItem('idealab_token');
+        if (activeToken) {
+          try {
+            await fetch(`${API_BASE}/timetable`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${activeToken}`
+              },
+              body: JSON.stringify({ timetable: newTimetable })
+            });
+            console.log('✓ Imported timetable persisted to database successfully!');
+          } catch (e) {
+            console.error('Error persisting imported timetable:', e);
+          }
+        }
         return true;
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('Failed to parse import JSON:', e);
+    }
     return false;
   };
 
@@ -468,13 +509,30 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return JSON.stringify(data, null, 2);
   };
 
-  const resetAllData = () => {
+  const resetAllData = async () => {
     setData(prev => ({
       ...prev,
       timetable: {},
       labs: {},
       attendance: {}
     }));
+    markSaving();
+
+    const activeToken = token || localStorage.getItem('campusos-token') || localStorage.getItem('idealab_token');
+    if (activeToken) {
+      try {
+        await fetch(`${API_BASE}/timetable`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${activeToken}`
+          },
+          body: JSON.stringify({ timetable: {} })
+        });
+      } catch (e) {
+        console.error('Error clearing timetable on backend:', e);
+      }
+    }
   };
 
   const openAuthModal = () => setIsAuthModalOpen(true);
