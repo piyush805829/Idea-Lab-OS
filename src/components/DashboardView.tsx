@@ -3,7 +3,6 @@ import { useSchedule } from '../context/ScheduleContext';
 import { 
   TIME_SLOTS, 
   getDayName, 
-  getTomorrowDayName,
   timeToMinutes,
   getCurrentTimeInMinutes,
   getCountdown
@@ -17,19 +16,47 @@ import {
   BookOpen,
   Layers,
   Sparkles,
-  Check
+  Share2,
+  Download,
+  CheckCircle2,
+  ShieldCheck,
+  X
 } from 'lucide-react';
 import type { DayOfWeek, TimeSlot, ClassSchedule } from '../types';
 import { TimetableGrid } from './TimetableGrid';
+import { ShareTimetableModal } from './ShareTimetableModal';
 
 interface DashboardViewProps {
-  onNavigateToTab: (tab: string) => void;
+  onNavigateToTab?: (tab: string) => void;
+  readOnlyData?: {
+    student: {
+      fullName: string;
+      regNumber: string;
+      section?: string;
+      branch?: string;
+      batch?: string;
+    };
+    timetable?: Record<string, ClassSchedule>;
+    labs?: Record<string, any>;
+    attendance?: Record<string, any>;
+  };
+  isReadOnly?: boolean;
+  onCloseReadOnly?: () => void;
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateToTab }) => {
-  const { data, saveClass, deleteClass, updateProfile, updateLabRecord } = useSchedule();
+export const DashboardView: React.FC<DashboardViewProps> = ({ 
+  onNavigateToTab,
+  readOnlyData,
+  isReadOnly = false,
+  onCloseReadOnly
+}) => {
+  const { data, saveClass, deleteClass, updateProfile, incomingShared, importSharedSchedule } = useSchedule();
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   
+  // Share Timetable Modal State
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [importNotification, setImportNotification] = useState('');
+
   // Timetable Edit Modal State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedDay, setSelectedDay] = useState<DayOfWeek>('Monday');
@@ -45,20 +72,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateToTab })
   const [formEndTime, setFormEndTime] = useState('');
   const [formNotes, setFormNotes] = useState('');
 
-  // Tomorrow Lab Edit Modal State
-  const [isLabModalOpen, setIsLabModalOpen] = useState(false);
-  const [labModalTargetName, setLabModalTargetName] = useState('');
-  const [labFormRecordNum, setLabFormRecordNum] = useState(1);
-  const [labFormTopic, setLabFormTopic] = useState('');
-  const [labFormStatus, setLabFormStatus] = useState<'pending' | 'completed'>('pending');
-  const [labFormNotes, setLabFormNotes] = useState('');
+
 
   // Welcome modal inputs (for first time profile setup)
   const [welcomeName, setWelcomeName] = useState('');
   const [welcomeReg, setWelcomeReg] = useState('');
 
-  const timetable = data.timetable;
-  const labs = data.labs;
+  const profile = isReadOnly && readOnlyData?.student 
+    ? {
+        fullName: readOnlyData.student.fullName,
+        regNumber: readOnlyData.student.regNumber,
+        section: readOnlyData.student.section || 'N/A',
+        batch: readOnlyData.student.batch || 'N/A',
+        branch: readOnlyData.student.branch || 'N/A'
+      } 
+    : data.profile;
+
+  const timetable = (isReadOnly && readOnlyData?.timetable) 
+    ? readOnlyData.timetable 
+    : data.timetable;
 
   // Update clock every second
   useEffect(() => {
@@ -134,51 +166,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateToTab })
     }
   }
 
-  // 3. Tomorrow's Lab Card Logic (scans tomorrow's classes for type === 'lab' and merges with custom lab log)
-  const tomorrowName = getTomorrowDayName(currentDate);
-  let tomorrowLabInfo: {
-    labName: string;
-    room: string;
-    teacher: string;
-    startTime: string;
-    endTime: string;
-    recordNumber: number;
-    topic: string;
-    status: 'pending' | 'completed';
-    notes: string;
-  } | null = null;
 
-  if (tomorrowName) {
-    for (const slot of TIME_SLOTS) {
-      if (slot.isLunch) continue;
-      const cls = timetable[`${tomorrowName}-${slot.id}`];
-      if (cls && cls.type === 'lab') {
-        const name = cls.subject;
-        const record = labs[name] || {
-          recordNumber: 1,
-          topic: 'No topic set',
-          status: 'pending',
-          notes: ''
-        };
-
-        tomorrowLabInfo = {
-          labName: name,
-          room: cls.room,
-          teacher: cls.teacher,
-          startTime: cls.startTime || slot.startTime,
-          endTime: cls.endTime || slot.endTime,
-          recordNumber: record.recordNumber,
-          topic: record.topic,
-          status: record.status,
-          notes: record.notes
-        };
-        break;
-      }
-    }
-  }
 
   // Timetable Edit Dialog actions
   const handleOpenEditModal = (day: DayOfWeek, slot: TimeSlot) => {
+    if (isReadOnly) return;
     setSelectedDay(day);
     setSelectedSlot(slot);
     
@@ -232,36 +224,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateToTab })
     setIsEditModalOpen(false);
   };
 
-  // Tomorrow Lab card edit modal launcher
-  const handleOpenLabModal = () => {
-    if (!tomorrowLabInfo) return;
-    const name = tomorrowLabInfo.labName;
-    setLabModalTargetName(name);
 
-    const record = labs[name] || {
-      recordNumber: 1,
-      topic: '',
-      status: 'pending',
-      notes: ''
-    };
 
-    setLabFormRecordNum(record.recordNumber);
-    setLabFormTopic(record.topic);
-    setLabFormStatus(record.status);
-    setLabFormNotes(record.notes);
-    setIsLabModalOpen(true);
-  };
-
-  const handleSaveLabRecord = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateLabRecord(labModalTargetName, {
-      recordNumber: labFormRecordNum,
-      topic: labFormTopic.trim(),
-      status: labFormStatus,
-      notes: labFormNotes.trim()
-    });
-    setIsLabModalOpen(false);
-  };
 
   const handleWelcomeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -281,8 +245,36 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateToTab })
   return (
     <div className="space-y-8 animate-fade-in">
       
+      {/* READ ONLY ADMIN PREVIEW BANNER */}
+      {isReadOnly && (
+        <div className="bg-black text-white dark:bg-white dark:text-black p-4 rounded-xl flex items-center justify-between shadow-soft-lg mb-4">
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 bg-amber-500/20 text-amber-500 rounded-lg flex items-center justify-center font-bold">
+              <ShieldCheck className="h-5 w-5" />
+            </div>
+            <div>
+              <h4 className="text-xs font-extrabold uppercase tracking-wider">
+                Student Dashboard Read-Only Preview
+              </h4>
+              <p className="text-xs font-mono opacity-80 mt-0.5">
+                Viewing Student: {profile?.fullName} ({profile?.regNumber}) &bull; Sec: {profile?.section} &bull; Branch: {profile?.branch} &bull; Batch: {profile?.batch}
+              </p>
+            </div>
+          </div>
+          {onCloseReadOnly && (
+            <button
+              onClick={onCloseReadOnly}
+              className="px-3.5 py-1.5 bg-white/20 dark:bg-black/20 hover:bg-white/30 dark:hover:bg-black/30 text-xs font-extrabold rounded-lg transition flex items-center gap-1.5"
+            >
+              <X className="h-4 w-4" />
+              Close View
+            </button>
+          )}
+        </div>
+      )}
+
       {/* FIRST TIME SETUP WELCOME MODAL */}
-      {!data.profile && (
+      {!profile && !isReadOnly && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 dark:bg-black/85 backdrop-blur-md animate-fade-in">
           <div className="bg-white dark:bg-campus-card-dark border border-campus-border-light dark:border-campus-border-dark rounded-campus shadow-soft-lg w-full max-w-md overflow-hidden transform scale-100 transition-all duration-300 animate-slide-up">
             <div className="px-6 py-6 border-b border-campus-border-light dark:border-campus-border-dark bg-campus-bg-light dark:bg-zinc-900/50 text-center space-y-1.5 select-none">
@@ -290,7 +282,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateToTab })
                 <Sparkles className="h-5.5 w-5.5" />
               </div>
               <h3 className="font-extrabold text-lg text-campus-primary-light dark:text-campus-primary-dark">
-                Welcome to CampusOS
+                Welcome to Idea Lab Management
               </h3>
               <p className="text-xs text-campus-secondary-light dark:text-campus-secondary-dark max-w-[280px] mx-auto">
                 Set up your student profile details to customize your timetable dashboard.
@@ -342,8 +334,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateToTab })
         </div>
       )}
 
-      {/* 3 Grid Live Status Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* 2 Grid Live Status Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
         {/* SECTION 1: CURRENT CLASS CARD */}
         <div className="bg-white dark:bg-campus-card-dark border border-campus-border-light dark:border-campus-border-dark p-6 rounded-campus shadow-soft-sm flex flex-col justify-between min-h-[170px] transition-all hover:translate-y-[-2px] hover:shadow-soft-md duration-200 relative overflow-hidden">
@@ -466,65 +458,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateToTab })
               <span className="font-semibold uppercase text-campus-primary-light dark:text-campus-primary-dark">
                 {nextClass.type === 'lab' ? 'Lab Module' : 'Lecture'}
               </span>
-            </div>
-          )}
-        </div>
-
-        {/* SECTION 3: TOMORROW'S LAB CARD */}
-        <div 
-          onClick={handleOpenLabModal}
-          className={`bg-white dark:bg-campus-card-dark border border-campus-border-light dark:border-campus-border-dark p-6 rounded-campus shadow-soft-sm flex flex-col justify-between min-h-[170px] transition-all duration-200 ${
-            tomorrowLabInfo ? 'cursor-pointer hover:translate-y-[-2px] hover:shadow-soft-md' : 'select-none'
-          }`}
-        >
-          <div>
-            <div className="flex items-center justify-between mb-3.5">
-              <span className="text-xs font-semibold text-campus-secondary-light dark:text-campus-secondary-dark tracking-wider uppercase">Tomorrow's Lab</span>
-              {tomorrowLabInfo && (
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border tracking-wider select-none ${
-                  tomorrowLabInfo.status === 'completed'
-                    ? 'bg-green-50 text-green-600 border-green-100 dark:bg-green-950/20 dark:text-green-400 dark:border-green-900/30'
-                    : 'bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/30'
-                }`}>
-                  {tomorrowLabInfo.status === 'completed' ? 'Completed' : 'Pending'}
-                </span>
-              )}
-            </div>
-
-            {tomorrowLabInfo ? (
-              <div className="space-y-1.5">
-                <h3 className="text-xl font-bold tracking-tight text-campus-primary-light dark:text-campus-primary-dark truncate">
-                  {tomorrowLabInfo.labName}
-                </h3>
-                <div className="text-xs text-campus-secondary-light dark:text-campus-secondary-dark space-y-0.5">
-                  <div className="flex items-center space-x-1.5 font-medium select-none">
-                    <span className="font-bold text-campus-primary-light dark:text-campus-primary-dark">Record #{tomorrowLabInfo.recordNumber}:</span>
-                    <span className="truncate max-w-[140px] italic">{tomorrowLabInfo.topic || 'No topic configured'}</span>
-                  </div>
-                  <div className="flex items-center space-x-3 text-[11px] pt-1">
-                    <span className="flex items-center gap-1 font-mono">
-                      <Clock className="h-3 w-3" />
-                      {tomorrowLabInfo.startTime}–{tomorrowLabInfo.endTime}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="py-2">
-                <p className="text-base font-bold text-campus-secondary-light dark:text-campus-secondary-dark">
-                  No lab tomorrow
-                </p>
-                <p className="text-xs text-campus-secondary-light dark:text-campus-secondary-dark mt-1">
-                  Enjoy a lighter lab schedule.
-                </p>
-              </div>
-            )}
-          </div>
-
-          {tomorrowLabInfo && (
-            <div className="mt-4 pt-3 border-t border-campus-border-light dark:border-campus-border-dark text-[10px] font-semibold text-campus-secondary-light dark:text-campus-secondary-dark flex items-center justify-between select-none">
-              <span>Click to Edit Record Details</span>
-              <span className="font-mono">{tomorrowLabInfo.room}</span>
             </div>
           )}
         </div>
@@ -673,26 +606,95 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateToTab })
 
         {/* SECTION 5: WEEKLY TIMETABLE grid */}
         <div className="lg:col-span-2 space-y-6 animate-fade-in">
+          {importNotification && (
+            <div className="p-3.5 bg-green-500/10 border border-green-500/30 text-green-600 dark:text-green-400 rounded-campus text-xs font-bold flex items-center gap-2 animate-fadeIn">
+              <CheckCircle2 className="h-4 w-4" />
+              <span>{importNotification}</span>
+            </div>
+          )}
+
+          {/* SHARED TIMETABLES RECIPIENT CARD */}
+          {incomingShared && incomingShared.length > 0 && (
+            <div className="bg-white dark:bg-campus-card-dark border border-campus-border-light dark:border-campus-border-dark p-5 rounded-campus shadow-soft-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <Share2 className="h-4 w-4 text-blue-500" />
+                <h3 className="font-bold text-sm text-campus-primary-light dark:text-campus-primary-dark">
+                  Shared Timetables Received
+                </h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {incomingShared.map((item) => (
+                  <div key={item._id} className="p-3.5 bg-campus-bg-light dark:bg-campus-bg-dark rounded-xl border border-campus-border-light dark:border-campus-border-dark flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-xs font-bold">{item.fromStudentName}</h4>
+                      <p className="text-[10px] font-mono text-campus-secondary-light dark:text-campus-secondary-dark mt-0.5">
+                        {item.fromSection || 'Section N/A'} • Shared Today
+                      </p>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        const res = await importSharedSchedule(item._id);
+                        if (res.success) {
+                          setImportNotification(res.message);
+                          setTimeout(() => setImportNotification(''), 4000);
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-black text-white dark:bg-white dark:text-black font-semibold text-xs rounded-lg hover:opacity-90 transition shrink-0 flex items-center gap-1.5 shadow-soft-sm"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Import Schedule
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="bg-white dark:bg-campus-card-dark border border-campus-border-light dark:border-campus-border-dark p-6 rounded-campus shadow-soft-sm">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
               <div>
                 <h3 className="font-bold text-base text-campus-primary-light dark:text-campus-primary-dark">Weekly Timetable</h3>
                 <p className="text-xs text-campus-secondary-light dark:text-campus-secondary-dark mt-0.5">
                   Click any cell to edit details. Hover to see slot info. Includes Friday editing.
                 </p>
               </div>
-              <button 
-                onClick={() => onNavigateToTab('settings')}
-                className="text-xs bg-campus-bg-light hover:bg-campus-border-light dark:bg-zinc-800 dark:hover:bg-zinc-700 font-semibold px-3 py-1.5 border border-campus-border-light dark:border-campus-border-dark rounded-lg transition-all"
-              >
-                Reset / Import
-              </button>
+              <div className="flex items-center gap-2">
+                {!isReadOnly && (
+                  <>
+                    <button
+                      onClick={() => setIsShareModalOpen(true)}
+                      className="text-xs bg-black text-white dark:bg-white dark:text-black hover:opacity-90 font-bold px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-soft-sm shrink-0"
+                    >
+                      <Share2 className="h-3.5 w-3.5" />
+                      Share
+                    </button>
+                    {onNavigateToTab && (
+                      <button 
+                        onClick={() => onNavigateToTab('settings')}
+                        className="text-xs bg-campus-bg-light hover:bg-campus-border-light dark:bg-zinc-800 dark:hover:bg-zinc-700 font-semibold px-3 py-1.5 border border-campus-border-light dark:border-campus-border-dark rounded-lg transition-all shrink-0"
+                      >
+                        Reset / Import
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Timetable Grid Component */}
-            <TimetableGrid onCellClick={handleOpenEditModal} />
+            <TimetableGrid 
+              onCellClick={handleOpenEditModal} 
+              customTimetable={timetable}
+              readOnly={isReadOnly}
+            />
           </div>
         </div>
+
+        {/* Share Timetable Modal */}
+        <ShareTimetableModal
+          isOpen={isShareModalOpen}
+          onClose={() => setIsShareModalOpen(false)}
+        />
 
       </div>
 
@@ -916,139 +918,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateToTab })
         </div>
       )}
 
-      {/* TOMORROW LAB EDIT RECORD MODAL */}
-      {isLabModalOpen && tomorrowLabInfo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 dark:bg-black/70 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white dark:bg-campus-card-dark border border-campus-border-light dark:border-campus-border-dark rounded-campus shadow-soft-lg w-full max-w-md overflow-hidden transform scale-100 transition-all duration-300 animate-slide-up">
-            
-            {/* Header */}
-            <div className="px-6 py-4 border-b border-campus-border-light dark:border-campus-border-dark flex justify-between items-center bg-campus-bg-light dark:bg-zinc-900/50">
-              <div>
-                <h3 className="font-bold text-sm text-campus-primary-light dark:text-campus-primary-dark">
-                  Edit Lab Record Details
-                </h3>
-                <p className="text-xs text-campus-secondary-light dark:text-campus-secondary-dark mt-0.5">
-                  Configure assignment checklist for {labModalTargetName}
-                </p>
-              </div>
-              <button
-                onClick={() => setIsLabModalOpen(false)}
-                className="text-campus-secondary-light hover:text-campus-primary-light dark:text-campus-secondary-dark dark:hover:text-campus-primary-dark text-lg font-semibold"
-              >
-                &times;
-              </button>
-            </div>
 
-            {/* Form */}
-            <form onSubmit={handleSaveLabRecord}>
-              <div className="p-6 space-y-4">
-                
-                {/* Record Number */}
-                <div>
-                  <label htmlFor="labRecordNum" className="block text-xs font-semibold text-campus-secondary-light dark:text-campus-secondary-dark uppercase tracking-wider mb-1.5">
-                    Record Number
-                  </label>
-                  <input
-                    id="labRecordNum"
-                    type="number"
-                    required
-                    min={1}
-                    value={labFormRecordNum}
-                    onChange={(e) => setLabFormRecordNum(parseInt(e.target.value) || 1)}
-                    className="w-full text-sm px-3.5 py-2 rounded-lg border border-campus-border-light dark:border-campus-border-dark bg-white dark:bg-zinc-900 focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white transition-all text-campus-primary-light dark:text-campus-primary-dark"
-                  />
-                </div>
-
-                {/* Topic */}
-                <div>
-                  <label htmlFor="labTopic" className="block text-xs font-semibold text-campus-secondary-light dark:text-campus-secondary-dark uppercase tracking-wider mb-1.5">
-                    Topic / Assignment Title
-                  </label>
-                  <input
-                    id="labTopic"
-                    type="text"
-                    required
-                    placeholder="e.g. Relational Calculus & Keys"
-                    value={labFormTopic}
-                    onChange={(e) => setLabFormTopic(e.target.value)}
-                    className="w-full text-sm px-3.5 py-2 rounded-lg border border-campus-border-light dark:border-campus-border-dark bg-white dark:bg-zinc-900 focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white transition-all text-campus-primary-light dark:text-campus-primary-dark"
-                  />
-                </div>
-
-                {/* Status Toggle */}
-                <div>
-                  <span className="block text-xs font-semibold text-campus-secondary-light dark:text-campus-secondary-dark uppercase tracking-wider mb-2">
-                    Checklist Status
-                  </span>
-                  <div className="flex gap-4">
-                    <label className="flex items-center space-x-2 text-sm cursor-pointer select-none">
-                      <input
-                        type="radio"
-                        name="labStatus"
-                        value="pending"
-                        checked={labFormStatus === 'pending'}
-                        onChange={() => setLabFormStatus('pending')}
-                        className="h-4 w-4 text-black dark:text-white border-campus-border-light dark:border-campus-border-dark focus:ring-0 cursor-pointer accent-black dark:accent-white"
-                      />
-                      <span className="text-campus-primary-light dark:text-campus-primary-dark font-medium flex items-center gap-1.5">
-                        <Clock className="h-3.5 w-3.5 text-gray-400" />
-                        Pending
-                      </span>
-                    </label>
-                    <label className="flex items-center space-x-2 text-sm cursor-pointer select-none">
-                      <input
-                        type="radio"
-                        name="labStatus"
-                        value="completed"
-                        checked={labFormStatus === 'completed'}
-                        onChange={() => setLabFormStatus('completed')}
-                        className="h-4 w-4 text-black dark:text-white border-campus-border-light dark:border-campus-border-dark focus:ring-0 cursor-pointer accent-black dark:accent-white"
-                      />
-                      <span className="text-campus-primary-light dark:text-campus-primary-dark font-medium flex items-center gap-1.5">
-                        <Check className="h-3.5 w-3.5 text-green-500" />
-                        Completed
-                      </span>
-                    </label>
-                  </div>
-                </div>
-
-                {/* Notes */}
-                <div>
-                  <label htmlFor="labNotes" className="block text-xs font-semibold text-campus-secondary-light dark:text-campus-secondary-dark uppercase tracking-wider mb-1.5">
-                    Record Notes / Rules
-                  </label>
-                  <textarea
-                    id="labNotes"
-                    placeholder="Enter submission notes..."
-                    rows={3}
-                    value={labFormNotes}
-                    onChange={(e) => setLabFormNotes(e.target.value)}
-                    className="w-full text-sm px-3.5 py-2 rounded-lg border border-campus-border-light dark:border-campus-border-dark bg-white dark:bg-zinc-900 focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white transition-all text-campus-primary-light dark:text-campus-primary-dark resize-none font-normal"
-                  />
-                </div>
-
-              </div>
-
-              {/* Action Buttons */}
-              <div className="px-6 py-4 bg-campus-bg-light dark:bg-zinc-900/50 border-t border-campus-border-light dark:border-campus-border-dark flex justify-end space-x-2">
-                <button
-                  type="button"
-                  onClick={() => setIsLabModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold border border-campus-border-light dark:border-campus-border-dark rounded-lg text-campus-secondary-light hover:text-campus-primary-light dark:text-campus-secondary-dark dark:hover:text-campus-primary-dark transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 text-xs font-bold bg-black text-white hover:bg-gray-800 dark:bg-white dark:text-black dark:hover:bg-gray-100 rounded-lg shadow-soft-sm transition-colors"
-                >
-                  Save Record
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
     </div>
   );

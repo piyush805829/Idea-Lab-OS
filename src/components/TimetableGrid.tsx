@@ -1,16 +1,22 @@
 import React from 'react';
 import { useSchedule } from '../context/ScheduleContext';
 import { DAYS, TIME_SLOTS } from '../utils/timeUtils';
-import type { DayOfWeek, TimeSlot } from '../types';
+import type { DayOfWeek, TimeSlot, ClassSchedule } from '../types';
 import { MapPin, User, Plus } from 'lucide-react';
 
 interface TimetableGridProps {
-  onCellClick: (day: DayOfWeek, slot: TimeSlot) => void;
+  onCellClick?: (day: DayOfWeek, slot: TimeSlot) => void;
+  customTimetable?: Record<string, ClassSchedule>;
+  readOnly?: boolean;
 }
 
-export const TimetableGrid: React.FC<TimetableGridProps> = ({ onCellClick }) => {
+export const TimetableGrid: React.FC<TimetableGridProps> = ({ 
+  onCellClick,
+  customTimetable,
+  readOnly = false
+}) => {
   const { data } = useSchedule();
-  const timetable = data.timetable;
+  const timetable = customTimetable || data.timetable;
 
   return (
     <div className="overflow-x-auto -mx-6 px-6 lg:mx-0 lg:px-0">
@@ -56,14 +62,16 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({ onCellClick }) => 
                   return (
                     <td 
                       key={day} 
-                      onClick={() => onCellClick(day, slot)}
-                      className="py-2.5 px-3 relative align-top cursor-pointer group"
+                      onClick={() => !readOnly && onCellClick && onCellClick(day, slot)}
+                      className={`py-2.5 px-3 relative align-top ${readOnly ? 'cursor-default' : 'cursor-pointer group'}`}
                     >
                       {cls ? (
-                        <div className={`h-full p-2.5 rounded-lg border transition-all duration-200 flex flex-col justify-between min-h-[76px] hover:shadow-soft-sm ${
+                        <div className={`h-full p-2.5 rounded-lg border transition-all duration-200 flex flex-col justify-between min-h-[76px] ${
+                          readOnly ? '' : 'hover:shadow-soft-sm'
+                        } ${
                           cls.importance === 'important'
-                            ? 'bg-red-50/40 hover:bg-red-50/60 border-red-100 text-red-950 dark:bg-red-950/10 dark:hover:bg-red-950/15 dark:border-red-950/30 dark:text-red-300'
-                            : 'bg-green-50/40 hover:bg-green-50/60 border-green-100 text-green-950 dark:bg-green-950/10 dark:hover:bg-green-950/15 dark:border-green-950/30 dark:text-green-300'
+                            ? 'bg-red-50/40 border-red-100 text-red-950 dark:bg-red-950/10 dark:border-red-950/30 dark:text-red-300'
+                            : 'bg-green-50/40 border-green-100 text-green-950 dark:bg-green-950/10 dark:border-green-950/30 dark:text-green-300'
                         }`}>
                           <div>
                             <div className="flex items-center justify-between gap-1.5">
@@ -102,9 +110,15 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({ onCellClick }) => 
                           </div>
                         </div>
                       ) : (
-                        <div className="h-full border border-dashed border-campus-border-light hover:border-campus-primary-light/40 dark:border-campus-border-dark dark:hover:border-campus-primary-dark/30 rounded-lg min-h-[76px] flex items-center justify-center transition-all duration-150 bg-transparent hover:bg-white dark:hover:bg-zinc-900/50">
-                          <Plus className="h-4 w-4 text-gray-300 dark:text-zinc-700 group-hover:text-campus-secondary-light dark:group-hover:text-campus-secondary-dark transition-colors" />
-                        </div>
+                        readOnly ? (
+                          <div className="h-full border border-dashed border-campus-border-light/60 dark:border-campus-border-dark/60 rounded-lg min-h-[76px] flex items-center justify-center text-[10px] text-gray-300 dark:text-zinc-700 font-mono">
+                            —
+                          </div>
+                        ) : (
+                          <div className="h-full border border-dashed border-campus-border-light hover:border-campus-primary-light/40 dark:border-campus-border-dark dark:hover:border-campus-primary-dark/30 rounded-lg min-h-[76px] flex items-center justify-center transition-all duration-150 bg-transparent hover:bg-white dark:hover:bg-zinc-900/50">
+                            <Plus className="h-4 w-4 text-gray-300 dark:text-zinc-700 group-hover:text-campus-secondary-light dark:group-hover:text-campus-secondary-dark transition-colors" />
+                          </div>
+                        )
                       )}
                     </td>
                   );

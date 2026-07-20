@@ -26,8 +26,14 @@ export interface ClassSchedule {
 export type TimetableData = Record<string, ClassSchedule>;
 
 export interface UserProfile {
+  id?: string;
   fullName: string;
   regNumber: string;
+  role?: 'student' | 'admin';
+  section?: string;
+  batch?: string;
+  branch?: string;
+  profilePicture?: string;
 }
 
 export interface LabRecordSimple {
@@ -43,6 +49,72 @@ export interface AttendanceSimple {
 }
 
 export type Theme = 'light' | 'dark' | 'system';
+
+export interface NotificationItem {
+  _id: string;
+  title: string;
+  message: string;
+  type: 'info' | 'success' | 'warning' | 'error';
+  isRead: boolean;
+  createdAt: string;
+}
+
+export interface SharedScheduleItem {
+  _id: string;
+  fromUserId: string;
+  fromRegNumber: string;
+  fromStudentName: string;
+  fromSection: string;
+  toRegNumber: string;
+  timetableData: TimetableData;
+  isImported: boolean;
+  createdAt: string;
+}
+
+export interface IdeaLabRecord {
+  _id?: string;
+  studentName: string;
+  regNumber: string;
+  department?: string;
+  section?: string;
+  batch?: string;
+  subjectMissed: string;
+  teacher?: string;
+  room?: string;
+  lectureTime?: string;
+  date: string;
+  attendanceTime?: string;
+  reason: string;
+  status: string;
+}
+
+export interface AuditLogItem {
+  _id: string;
+  action: string;
+  performedBy: string;
+  details: string;
+  timestamp: string;
+}
+
+export interface TimetableTemplateItem {
+  _id: string;
+  title: string;
+  branch: string;
+  section: string;
+  timetableData: TimetableData;
+  createdBy: string;
+  createdAt?: string;
+}
+
+export interface AdminDashboardStats {
+  totalStudents: number;
+  todayActiveStudents: number;
+  schedulesCreated: number;
+  pendingLabsCount: number;
+  todayIdeaLabCount: number;
+  mostMissedSubjects: { subject: string; count: number }[];
+  mostActiveStudents: { fullName: string; regNumber: string; branch: string; section: string; lastActive: string }[];
+}
 
 export interface CampusOSData {
   profile: UserProfile | null;

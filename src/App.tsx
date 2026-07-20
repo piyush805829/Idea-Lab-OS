@@ -3,6 +3,7 @@ import { ScheduleProvider } from './context/ScheduleContext';
 import { Layout } from './components/Layout';
 import { DashboardView } from './components/DashboardView';
 import { SettingsView } from './components/SettingsView';
+import { AdminView } from './components/AdminView';
 
 function AppContent() {
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
@@ -18,6 +19,9 @@ function AppContent() {
       )}
       {currentTab === 'settings' && (
         <SettingsView />
+      )}
+      {currentTab === 'admin' && (
+        <AdminView />
       )}
     </Layout>
   );

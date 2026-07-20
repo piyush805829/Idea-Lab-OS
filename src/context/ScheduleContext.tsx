@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import type { 
   DayOfWeek, 
   ClassSchedule, 
@@ -7,18 +7,48 @@ import type {
   LabRecordSimple,
   AttendanceSimple,
   Theme,
-  CampusOSData
+  CampusOSData,
+  SharedScheduleItem,
+  NotificationItem
 } from '../types';
+
+const API_BASE = 'http://localhost:5000/api';
+
+interface AuthResponse {
+  success: boolean;
+  message: string;
+}
 
 interface ScheduleContextType {
   data: CampusOSData;
+  token: string | null;
   saveStatus: 'saving' | 'saved';
-  updateProfile: (profile: UserProfile | null) => void;
-  saveClass: (day: DayOfWeek, slotId: string, classData: ClassSchedule | null) => void;
-  deleteClass: (day: DayOfWeek, slotId: string) => void;
-  updateLabRecord: (labName: string, record: LabRecordSimple) => void;
-  updateAttendance: (subjectName: string, present: number, absent: number) => void;
+  isAuthModalOpen: boolean;
+  incomingShared: SharedScheduleItem[];
+  notifications: NotificationItem[];
+
+  // Auth actions
+  login: (identifier: string, password: string) => Promise<AuthResponse>;
+  signup: (payload: any) => Promise<AuthResponse>;
+  logout: () => void;
+  openAuthModal: () => void;
+  closeAuthModal: () => void;
+
+  // Data mutations
+  updateProfile: (profile: UserProfile | null) => Promise<void>;
+  saveClass: (day: DayOfWeek, slotId: string, classData: ClassSchedule | null) => Promise<void>;
+  deleteClass: (day: DayOfWeek, slotId: string) => Promise<void>;
+  updateLabRecord: (labName: string, record: LabRecordSimple) => Promise<void>;
+  updateAttendance: (subjectName: string, present: number, absent: number) => Promise<void>;
   setTheme: (theme: Theme) => void;
+
+  // Sharing & Importing
+  shareSearch: (regNumber: string) => Promise<{ success: boolean; data?: any; message?: string }>;
+  shareSend: (toRegNumber: string) => Promise<{ success: boolean; message: string }>;
+  importSharedSchedule: (sharedId: string) => Promise<{ success: boolean; message: string }>;
+  refreshIncomingShared: () => Promise<void>;
+
+  // Backups
   importBackup: (jsonData: string) => boolean;
   exportScheduleData: () => string;
   resetAllData: () => void;
@@ -26,7 +56,6 @@ interface ScheduleContextType {
 
 const ScheduleContext = createContext<ScheduleContextType | undefined>(undefined);
 
-// Default Timetable Mock Data
 const defaultTimetable: TimetableData = {
   'Monday-1': { subject: 'DSA', teacher: 'Dr. Alan', room: 'CS-101', importance: 'important', type: 'lecture' },
   'Monday-2': { subject: 'DBMS', teacher: 'Dr. Grace', room: 'CS-202', importance: 'can_skip', type: 'lecture' },
@@ -41,14 +70,12 @@ const defaultTimetable: TimetableData = {
   'Friday-6': { subject: 'DE Lab', teacher: 'Dr. Claude', room: 'EC-302', importance: 'important', type: 'lab' },
 };
 
-// Default Labs Mock Records
 const defaultLabs: Record<string, LabRecordSimple> = {
   'UI/UX Lab': { recordNumber: 2, topic: 'Figma Interactive Prototyping', status: 'pending', notes: 'Due coming Wednesday. Setup auto transitions.' },
   'DBMS Lab': { recordNumber: 4, topic: 'Relational Algebra & Subqueries', status: 'completed', notes: 'Checked and signed off by Dr. Grace.' },
   'DE Lab': { recordNumber: 1, topic: 'Combinational Adders & Subtractors', status: 'completed', notes: 'Verified output waveforms.' },
 };
 
-// Default Attendance Mock Logs
 const defaultAttendance: Record<string, AttendanceSimple> = {
   'DSA': { present: 14, absent: 1 },
   'DBMS': { present: 8, absent: 3 },
@@ -56,43 +83,42 @@ const defaultAttendance: Record<string, AttendanceSimple> = {
   'DE': { present: 10, absent: 2 },
 };
 
-const defaultData: CampusOSData = {
-  profile: null, // Force welcome modal on first open if profile is null
-  timetable: defaultTimetable,
-  labs: defaultLabs,
-  attendance: defaultAttendance,
-  theme: 'light',
-};
-
 export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [data, setData] = useState<CampusOSData>(() => {
-    const saved = localStorage.getItem('campusos-data');
-    return saved ? JSON.parse(saved) : defaultData;
+  // Only token & theme stored in localStorage
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('campusos-token'));
+  const [theme, setThemeState] = useState<Theme>(() => (localStorage.getItem('campusos-theme') as Theme) || 'light');
+  
+  const [data, setData] = useState<CampusOSData>({
+    profile: null,
+    timetable: defaultTimetable,
+    labs: defaultLabs,
+    attendance: defaultAttendance,
+    theme: theme
   });
 
   const [saveStatus, setSaveStatus] = useState<'saving' | 'saved'>('saved');
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [incomingShared, setIncomingShared] = useState<SharedScheduleItem[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Sync state modifications to LocalStorage & update save status indicator
-  const triggerSave = (updatedData: CampusOSData) => {
-    setSaveStatus('saving');
-    setData(updatedData);
-    localStorage.setItem('campusos-data', JSON.stringify(updatedData));
-
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
+  // Clean up legacy localStorage item if present
+  useEffect(() => {
+    if (localStorage.getItem('campusos-data')) {
+      localStorage.removeItem('campusos-data');
     }
+  }, []);
 
-    timerRef.current = setTimeout(() => {
-      setSaveStatus('saved');
-    }, 600);
+  // Sync theme changes with DOM & LocalStorage
+  const setTheme = (newTheme: Theme) => {
+    setThemeState(newTheme);
+    localStorage.setItem('campusos-theme', newTheme);
+    setData(prev => ({ ...prev, theme: newTheme }));
   };
 
-  // Sync theme changes with DOM classes
   useEffect(() => {
     const root = window.document.documentElement;
     root.classList.remove('light', 'dark');
-    const theme = data.theme;
 
     if (theme === 'system') {
       const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
@@ -100,30 +126,213 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } else {
       root.classList.add(theme);
     }
-  }, [data.theme]);
+  }, [theme]);
 
-  // Handle system theme updates dynamically
-  useEffect(() => {
-    if (data.theme !== 'system') return;
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleChange = () => {
-      const root = window.document.documentElement;
-      root.classList.remove('light', 'dark');
-      root.classList.add(mediaQuery.matches ? 'dark' : 'light');
+  // Helper for authenticated fetch
+  const authFetch = useCallback(async (url: string, options: RequestInit = {}) => {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(options.headers as Record<string, string> || {})
     };
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
-  }, [data.theme]);
 
-  // Expose CRUD actions
-  const updateProfile = (profile: UserProfile | null) => {
-    triggerSave({
-      ...data,
-      profile
-    });
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE}${url}`, { ...options, headers });
+    return response;
+  }, [token]);
+
+  // Load student data from backend if token present
+  const loadBackendData = useCallback(async () => {
+    if (!token) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+
+    try {
+      const res = await authFetch('/student/data');
+      if (res.status === 401 || res.status === 403) {
+        // Token expired
+        setToken(null);
+        localStorage.removeItem('campusos-token');
+        setIsAuthModalOpen(true);
+        return;
+      }
+
+      if (res.ok) {
+        const payload = await res.json();
+        setData(prev => ({
+          ...prev,
+          profile: payload.profile,
+          timetable: Object.keys(payload.timetable || {}).length > 0 ? payload.timetable : defaultTimetable,
+          labs: Object.keys(payload.labs || {}).length > 0 ? payload.labs : defaultLabs,
+          attendance: Object.keys(payload.attendance || {}).length > 0 ? payload.attendance : defaultAttendance,
+        }));
+        setNotifications(payload.notifications || []);
+        setIsAuthModalOpen(false);
+      }
+    } catch (e) {
+      console.warn('Backend unavailable, operating in standard local mode');
+    }
+  }, [token, authFetch]);
+
+  // Fetch incoming shared timetables
+  const refreshIncomingShared = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await authFetch('/share/incoming');
+      if (res.ok) {
+        const sharedData = await res.json();
+        setIncomingShared(sharedData);
+      }
+    } catch (e) {
+      console.error('Failed to fetch shared schedules:', e);
+    }
+  }, [token, authFetch]);
+
+  useEffect(() => {
+    loadBackendData();
+    refreshIncomingShared();
+  }, [loadBackendData, refreshIncomingShared]);
+
+  // Indicator status
+  const markSaving = () => {
+    setSaveStatus('saving');
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      setSaveStatus('saved');
+    }, 600);
   };
 
-  const saveClass = (day: DayOfWeek, slotId: string, classData: ClassSchedule | null) => {
+  // Auth: Login
+  const login = async (identifier: string, password: string): Promise<AuthResponse> => {
+    const cleanId = identifier.trim().toUpperCase();
+    const cleanName = identifier.trim().toLowerCase();
+
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier, password })
+      });
+
+      const json = await res.json();
+      if (res.ok && json.token) {
+        setToken(json.token);
+        localStorage.setItem('campusos-token', json.token);
+        setIsAuthModalOpen(false);
+        await loadBackendData();
+        return { success: true, message: 'Login successful' };
+      } else if (res.status === 401) {
+        return { success: false, message: json.message || 'Invalid credentials' };
+      }
+    } catch (err) {
+      console.warn('Backend login endpoint unavailable, executing client fallback authentication');
+    }
+
+    // Client-side instant testing fallback
+    if ((cleanId === 'PCEA25CS123' || cleanName === 'piyush') && password === 'student123') {
+      const dummyToken = 'mock_student_jwt_token';
+      setToken(dummyToken);
+      localStorage.setItem('campusos-token', dummyToken);
+      setData(prev => ({
+        ...prev,
+        profile: {
+          id: 'student_id_001',
+          fullName: 'Piyush',
+          regNumber: 'PCEA25CS123',
+          role: 'student',
+          section: 'B',
+          batch: '2',
+          branch: 'CSE'
+        }
+      }));
+      setIsAuthModalOpen(false);
+      return { success: true, message: 'Login successful' };
+    }
+
+    if ((cleanId === 'ADMIN001' || cleanName === 'system administrator') && password === 'admin123') {
+      const dummyToken = 'mock_admin_jwt_token';
+      setToken(dummyToken);
+      localStorage.setItem('campusos-token', dummyToken);
+      setData(prev => ({
+        ...prev,
+        profile: {
+          id: 'admin_id_001',
+          fullName: 'System Administrator',
+          regNumber: 'ADMIN001',
+          role: 'admin',
+          section: 'ADMIN',
+          batch: 'ADMIN',
+          branch: 'ADMIN'
+        }
+      }));
+      setIsAuthModalOpen(false);
+      return { success: true, message: 'Login successful' };
+    }
+
+    return { success: false, message: 'Invalid registration number/name or password' };
+  };
+
+  // Auth: Signup
+  const signup = async (payload: any): Promise<AuthResponse> => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const json = await res.json();
+      if (res.ok && json.token) {
+        setToken(json.token);
+        localStorage.setItem('campusos-token', json.token);
+        setIsAuthModalOpen(false);
+        await loadBackendData();
+        return { success: true, message: 'Account created successfully' };
+      } else {
+        return { success: false, message: json.message || 'Signup failed' };
+      }
+    } catch (err) {
+      return { success: false, message: 'Unable to connect to server.' };
+    }
+  };
+
+  const logout = () => {
+    setToken(null);
+    localStorage.removeItem('campusos-token');
+    setData({
+      profile: null,
+      timetable: defaultTimetable,
+      labs: defaultLabs,
+      attendance: defaultAttendance,
+      theme: theme
+    });
+    setIsAuthModalOpen(true);
+  };
+
+  // Update Profile
+  const updateProfile = async (profile: UserProfile | null) => {
+    if (!profile) return;
+    markSaving();
+    setData(prev => ({ ...prev, profile }));
+
+    if (token) {
+      try {
+        await authFetch('/student/profile', {
+          method: 'PUT',
+          body: JSON.stringify(profile)
+        });
+      } catch (e) {
+        console.error('Error saving profile:', e);
+      }
+    }
+  };
+
+  // Save / Modify Class
+  const saveClass = async (day: DayOfWeek, slotId: string, classData: ClassSchedule | null) => {
+    markSaving();
     const key = `${day}-${slotId}`;
     const newTimetable = { ...data.timetable };
     
@@ -133,7 +342,6 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       delete newTimetable[key];
     }
 
-    // Automatically scaffold empty attendance for new subjects
     const newAttendance = { ...data.attendance };
     if (classData && classData.subject.trim()) {
       const name = classData.subject.trim();
@@ -142,37 +350,72 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     }
 
-    triggerSave({
+    const updatedData = {
       ...data,
       timetable: newTimetable,
       attendance: newAttendance
-    });
+    };
+
+    setData(updatedData);
+
+    if (token) {
+      try {
+        await authFetch('/student/timetable', {
+          method: 'PUT',
+          body: JSON.stringify({ timetable: newTimetable })
+        });
+        await authFetch('/student/attendance', {
+          method: 'PUT',
+          body: JSON.stringify({ attendance: newAttendance })
+        });
+      } catch (e) {
+        console.error('Error syncing timetable:', e);
+      }
+    }
   };
 
-  const deleteClass = (day: DayOfWeek, slotId: string) => {
+  // Delete Class
+  const deleteClass = async (day: DayOfWeek, slotId: string) => {
+    markSaving();
     const key = `${day}-${slotId}`;
     const newTimetable = { ...data.timetable };
     delete newTimetable[key];
 
-    triggerSave({
-      ...data,
-      timetable: newTimetable
-    });
+    setData(prev => ({ ...prev, timetable: newTimetable }));
+
+    if (token) {
+      try {
+        await authFetch('/student/timetable', {
+          method: 'PUT',
+          body: JSON.stringify({ timetable: newTimetable })
+        });
+      } catch (e) {
+        console.error('Error deleting class:', e);
+      }
+    }
   };
 
-  const updateLabRecord = (labName: string, record: LabRecordSimple) => {
-    const newLabs = {
-      ...data.labs,
-      [labName]: record
-    };
+  // Update Lab Record
+  const updateLabRecord = async (labName: string, record: LabRecordSimple) => {
+    markSaving();
+    const newLabs = { ...data.labs, [labName]: record };
+    setData(prev => ({ ...prev, labs: newLabs }));
 
-    triggerSave({
-      ...data,
-      labs: newLabs
-    });
+    if (token) {
+      try {
+        await authFetch('/student/labs', {
+          method: 'PUT',
+          body: JSON.stringify({ labs: newLabs })
+        });
+      } catch (e) {
+        console.error('Error saving lab record:', e);
+      }
+    }
   };
 
-  const updateAttendance = (subjectName: string, present: number, absent: number) => {
+  // Update Attendance
+  const updateAttendance = async (subjectName: string, present: number, absent: number) => {
+    markSaving();
     const newAttendance = {
       ...data.attendance,
       [subjectName]: {
@@ -180,31 +423,86 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         absent: Math.max(0, absent)
       }
     };
+    setData(prev => ({ ...prev, attendance: newAttendance }));
 
-    triggerSave({
-      ...data,
-      attendance: newAttendance
-    });
+    if (token) {
+      try {
+        await authFetch('/student/attendance', {
+          method: 'PUT',
+          body: JSON.stringify({ attendance: newAttendance })
+        });
+      } catch (e) {
+        console.error('Error saving attendance:', e);
+      }
+    }
   };
 
-  const setTheme = (theme: Theme) => {
-    triggerSave({
-      ...data,
-      theme
-    });
+  // Share Search Target Student
+  const shareSearch = async (regNumber: string) => {
+    try {
+      const res = await authFetch('/share/search', {
+        method: 'POST',
+        body: JSON.stringify({ regNumber })
+      });
+      const json = await res.json();
+      if (res.ok) {
+        return { success: true, data: json };
+      } else {
+        return { success: false, message: json.message };
+      }
+    } catch (e) {
+      return { success: false, message: 'Server connection error' };
+    }
+  };
+
+  // Send Share Timetable
+  const shareSend = async (toRegNumber: string) => {
+    try {
+      const res = await authFetch('/share/send', {
+        method: 'POST',
+        body: JSON.stringify({ toRegNumber })
+      });
+      const json = await res.json();
+      return { success: res.ok, message: json.message };
+    } catch (e) {
+      return { success: false, message: 'Server connection error' };
+    }
+  };
+
+  // Import Shared Schedule (Duplicate Template pattern)
+  const importSharedSchedule = async (sharedId: string) => {
+    try {
+      const res = await authFetch('/share/import', {
+        method: 'POST',
+        body: JSON.stringify({ sharedId })
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setData(prev => ({ ...prev, timetable: json.timetable }));
+        await refreshIncomingShared();
+        return { success: true, message: json.message };
+      } else {
+        return { success: false, message: json.message || 'Import failed' };
+      }
+    } catch (e) {
+      return { success: false, message: 'Server connection error' };
+    }
   };
 
   const importBackup = (jsonData: string): boolean => {
     try {
       const parsed = JSON.parse(jsonData);
-      // Validate schema minimally
-      if (parsed.timetable && parsed.labs && parsed.attendance && parsed.theme) {
-        triggerSave(parsed);
+      if (parsed.timetable && parsed.labs && parsed.attendance) {
+        setData(prev => ({
+          ...prev,
+          timetable: parsed.timetable,
+          labs: parsed.labs,
+          attendance: parsed.attendance
+        }));
         return true;
       }
       return false;
     } catch (e) {
-      console.error(e);
       return false;
     }
   };
@@ -214,21 +512,41 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const resetAllData = () => {
-    localStorage.removeItem('campusos-data');
-    setData(defaultData);
-    setSaveStatus('saved');
+    localStorage.removeItem('campusos-token');
+    setToken(null);
+    setData({
+      profile: null,
+      timetable: defaultTimetable,
+      labs: defaultLabs,
+      attendance: defaultAttendance,
+      theme: theme
+    });
+    setIsAuthModalOpen(true);
   };
 
   return (
     <ScheduleContext.Provider value={{
       data,
+      token,
       saveStatus,
+      isAuthModalOpen,
+      incomingShared,
+      notifications,
+      login,
+      signup,
+      logout,
+      openAuthModal: () => setIsAuthModalOpen(true),
+      closeAuthModal: () => setIsAuthModalOpen(false),
       updateProfile,
       saveClass,
       deleteClass,
       updateLabRecord,
       updateAttendance,
       setTheme,
+      shareSearch,
+      shareSend,
+      importSharedSchedule,
+      refreshIncomingShared,
       importBackup,
       exportScheduleData,
       resetAllData

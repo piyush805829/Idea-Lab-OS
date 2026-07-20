@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSchedule } from '../context/ScheduleContext';
+import { AuthModal } from './AuthModal';
 import { 
   Calendar, 
   Settings as SettingsIcon, 
@@ -7,7 +8,9 @@ import {
   GraduationCap, 
   Sun, 
   Moon, 
-  Laptop 
+  Laptop,
+  ShieldCheck,
+  LogOut
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -17,7 +20,7 @@ interface LayoutProps {
 }
 
 export const Layout: React.FC<LayoutProps> = ({ currentTab, setCurrentTab, children }) => {
-  const { setTheme, data, saveStatus } = useSchedule();
+  const { setTheme, data, saveStatus, isAuthModalOpen, logout } = useSchedule();
   const theme = data.theme;
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
 
@@ -51,8 +54,15 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, setCurrentTab, child
     { id: 'settings', name: 'Settings', icon: SettingsIcon },
   ];
 
+  if (data.profile?.role === 'admin') {
+    navigationItems.push({ id: 'admin', name: 'Admin Panel', icon: ShieldCheck });
+  }
+
   return (
     <div className="min-h-screen bg-campus-bg-light dark:bg-campus-bg-dark text-campus-primary-light dark:text-campus-primary-dark transition-colors duration-200">
+      {/* Auth Modal Overlay when not authenticated */}
+      <AuthModal isOpen={isAuthModalOpen} />
+
       {/* Top Navbar */}
       <header className="sticky top-0 z-40 border-b border-campus-border-light dark:border-campus-border-dark bg-white/80 dark:bg-campus-card-dark/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -62,8 +72,8 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, setCurrentTab, child
               <GraduationCap className="h-5 w-5" />
             </div>
             <div>
-              <span className="font-semibold text-base tracking-tight block leading-none">CampusOS</span>
-              <span className="text-[10px] text-campus-secondary-light dark:text-campus-secondary-dark tracking-wider uppercase font-medium">Student Schedule OS</span>
+              <span className="font-semibold text-base tracking-tight block leading-none">Idea Lab Management</span>
+              <span className="text-[10px] text-campus-secondary-light dark:text-campus-secondary-dark tracking-wider uppercase font-medium">Idea Lab Platform</span>
             </div>
           </div>
 
@@ -103,13 +113,29 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, setCurrentTab, child
           <aside className="w-full md:w-64 shrink-0">
             {/* Student Profile in Sidebar */}
             {data.profile && (
-              <div className="bg-white dark:bg-campus-card-dark border border-campus-border-light dark:border-campus-border-dark p-4 rounded-campus shadow-soft-sm mb-4 select-none">
-                <h4 className="text-sm font-extrabold text-campus-primary-light dark:text-campus-primary-dark truncate leading-none">
-                  {data.profile.fullName}
-                </h4>
-                <span className="text-[10px] text-campus-secondary-light dark:text-campus-secondary-dark tracking-wide font-mono font-bold mt-1.5 block">
-                  {data.profile.regNumber}
-                </span>
+              <div className="bg-white dark:bg-campus-card-dark border border-campus-border-light dark:border-campus-border-dark p-4 rounded-campus shadow-soft-sm mb-4 select-none flex items-center justify-between">
+                <div className="min-w-0 flex-1 pr-2">
+                  <div className="flex items-center gap-1.5">
+                    <h4 className="text-sm font-extrabold text-campus-primary-light dark:text-campus-primary-dark truncate leading-none">
+                      {data.profile.fullName}
+                    </h4>
+                    {data.profile.role === 'admin' && (
+                      <span className="bg-black text-white dark:bg-white dark:text-black text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wider uppercase">
+                        ADMIN
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-campus-secondary-light dark:text-campus-secondary-dark tracking-wide font-mono font-bold mt-1.5 block truncate">
+                    {data.profile.regNumber} {data.profile.section ? `• ${data.profile.section}` : ''}
+                  </span>
+                </div>
+                <button
+                  onClick={logout}
+                  title="Sign Out"
+                  className="p-2 rounded-lg text-campus-secondary-light hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 transition shrink-0"
+                >
+                  <LogOut className="h-4 w-4" />
+                </button>
               </div>
             )}
             

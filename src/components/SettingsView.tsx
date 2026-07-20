@@ -1,102 +1,82 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { useSchedule } from '../context/ScheduleContext';
-import { 
-  Sun, 
-  Moon, 
-  Laptop, 
-  Download, 
-  Upload, 
-  RotateCcw, 
-  Check, 
-  AlertTriangle,
-  UserCheck
-} from 'lucide-react';
+import { Sun, Moon, Laptop, UserCheck, Download, Upload, AlertTriangle, RotateCcw, Check } from 'lucide-react';
 import type { Theme } from '../types';
 
 export const SettingsView: React.FC = () => {
-  const { data, updateProfile, setTheme, exportScheduleData, importBackup, resetAllData } = useSchedule();
-  const theme = data.theme;
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { data, updateProfile, resetAllData, setTheme, importBackup, exportScheduleData } = useSchedule();
   
-  // Local profile states
   const [fullName, setFullName] = useState(data.profile?.fullName || '');
   const [regNumber, setRegNumber] = useState(data.profile?.regNumber || '');
-
-  // Notification states
-  const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
-  // Sync profile details if changed externally
-  useEffect(() => {
-    if (data.profile) {
-      setFullName(data.profile.fullName);
-      setRegNumber(data.profile.regNumber);
-    } else {
-      setFullName('');
-      setRegNumber('');
-    }
-  }, [data.profile]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleProfileChange = (field: 'fullName' | 'regNumber', value: string) => {
+  const handleProfileChange = (field: 'fullName' | 'regNumber', val: string) => {
     if (field === 'fullName') {
-      setFullName(value);
-      updateProfile({ fullName: value, regNumber });
+      setFullName(val);
+      if (data.profile) {
+        updateProfile({ ...data.profile, fullName: val });
+      }
     } else {
-      setRegNumber(value);
-      updateProfile({ fullName, regNumber: value });
+      setRegNumber(val);
+      if (data.profile) {
+        updateProfile({ ...data.profile, regNumber: val });
+      }
     }
   };
 
   const handleExport = () => {
-    const dataStr = exportScheduleData();
-    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-    
-    const exportFileDefaultName = 'campusos-data-backup.json';
-    
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
-    linkElement.click();
+    const jsonStr = exportScheduleData();
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `idealab_backup_${data.profile?.regNumber || 'student'}_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const handleImportClick = () => {
-    fileInputRef.current?.click();
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
   };
 
   const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const fileReader = new FileReader();
     const file = e.target.files?.[0];
     if (!file) return;
 
-    fileReader.onload = (event) => {
-      const result = event.target?.result;
-      if (typeof result === 'string') {
-        const success = importBackup(result);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const success = importBackup(text);
         if (success) {
           setImportStatus('success');
-          setTimeout(() => {
-            setImportStatus('idle');
-            // Auto reload to re-scaffold UI state
-            window.location.reload();
-          }, 1500);
+          setTimeout(() => setImportStatus('idle'), 4000);
         } else {
           setImportStatus('error');
-          setTimeout(() => setImportStatus('idle'), 3000);
+          setTimeout(() => setImportStatus('idle'), 4000);
         }
+      } catch (err) {
+        setImportStatus('error');
+        setTimeout(() => setImportStatus('idle'), 4000);
       }
     };
-    fileReader.readAsText(file);
-    e.target.value = '';
+    reader.readAsText(file);
+    if (e.target) e.target.value = '';
   };
 
   const handleExecuteReset = () => {
     resetAllData();
     setIsResetModalOpen(false);
-    // Reload to return back to first-time setup state
-    window.location.reload();
   };
 
-  const themeOptions: { id: Theme; label: string; icon: typeof Sun; desc: string }[] = [
+  const themeOptions: { id: Theme; label: string; icon: React.FC<{ className?: string }>; desc: string }[] = [
     { id: 'light', label: 'Light Theme', icon: Sun, desc: 'Clean background with soft gray borders.' },
     { id: 'dark', label: 'Dark Theme', icon: Moon, desc: 'Vibrant text highlights on dark cards.' },
     { id: 'system', label: 'System Sync', icon: Laptop, desc: 'Adapts to your operating system settings.' }
@@ -148,7 +128,7 @@ export const SettingsView: React.FC = () => {
                 id="regNumber"
                 type="text"
                 required
-                placeholder="e.g. 24EJICS089"
+                placeholder="e.g. PCEA25CS123"
                 value={regNumber}
                 onChange={(e) => handleProfileChange('regNumber', e.target.value)}
                 className="w-full text-sm px-3.5 py-2 rounded-lg border border-campus-border-light dark:border-campus-border-dark bg-white dark:bg-zinc-900 focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white transition-all text-campus-primary-light dark:text-campus-primary-dark font-mono font-semibold"
@@ -162,38 +142,25 @@ export const SettingsView: React.FC = () => {
           <div>
             <h3 className="font-bold text-sm text-campus-primary-light dark:text-campus-primary-dark">Appearance</h3>
             <p className="text-xs text-campus-secondary-light dark:text-campus-secondary-dark mt-0.5">
-              Select how CampusOS looks on your screen.
+              Select how Idea Lab Management looks on your screen.
             </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 select-none">
             {themeOptions.map((opt) => {
               const Icon = opt.icon;
-              const isSelected = theme === opt.id;
-
               return (
                 <button
                   key={opt.id}
                   onClick={() => setTheme(opt.id)}
-                  className={`p-4 rounded-xl border text-left flex flex-col justify-between transition-all duration-150 relative ${
-                    isSelected
-                      ? 'border-black bg-black text-white dark:border-white dark:bg-white dark:text-black shadow-soft-sm'
-                      : 'border-campus-border-light bg-white hover:bg-campus-bg-light/60 dark:border-campus-border-dark dark:bg-zinc-900/20 dark:hover:bg-zinc-900/60 text-campus-primary-light dark:text-campus-primary-dark'
-                  }`}
+                  className="p-4 rounded-xl border border-campus-border-light dark:border-campus-border-dark bg-white dark:bg-zinc-900/20 text-left flex flex-col justify-between hover:border-black dark:hover:border-white transition-all duration-150"
                 >
                   <div className="flex justify-between items-center w-full mb-3">
                     <Icon className="h-4.5 w-4.5" />
-                    {isSelected && (
-                      <span className="h-4 w-4 bg-white/20 dark:bg-black/10 rounded-full flex items-center justify-center">
-                        <Check className="h-3 w-3" />
-                      </span>
-                    )}
                   </div>
                   <div>
                     <span className="block font-bold text-xs">{opt.label}</span>
-                    <span className={`block text-[10px] mt-0.5 leading-tight ${
-                      isSelected ? 'text-gray-300 dark:text-zinc-500' : 'text-campus-secondary-light dark:text-campus-secondary-dark'
-                    }`}>
+                    <span className="block text-[10px] mt-0.5 leading-tight text-campus-secondary-light dark:text-campus-secondary-dark">
                       {opt.desc}
                     </span>
                   </div>
@@ -213,16 +180,14 @@ export const SettingsView: React.FC = () => {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3 pt-2">
-            {/* Export Button */}
             <button
               onClick={handleExport}
               className="flex-1 inline-flex items-center justify-center gap-2 p-3 bg-white dark:bg-zinc-900 border border-campus-border-light dark:border-campus-border-dark rounded-xl text-xs font-bold text-campus-primary-light dark:text-campus-primary-dark hover:bg-campus-bg-light dark:hover:bg-zinc-800 transition-colors shadow-soft-sm"
             >
               <Download className="h-4 w-4" />
-              Export Backup
+              <span>Export Backup (.json)</span>
             </button>
 
-            {/* Import Button */}
             <div className="flex-1 relative">
               <input
                 type="file"
@@ -236,12 +201,11 @@ export const SettingsView: React.FC = () => {
                 className="w-full inline-flex items-center justify-center gap-2 p-3 bg-white dark:bg-zinc-900 border border-campus-border-light dark:border-campus-border-dark rounded-xl text-xs font-bold text-campus-primary-light dark:text-campus-primary-dark hover:bg-campus-bg-light dark:hover:bg-zinc-800 transition-colors shadow-soft-sm"
               >
                 <Upload className="h-4 w-4" />
-                Import Backup
+                <span>Import Backup (.json)</span>
               </button>
             </div>
           </div>
 
-          {/* Import Notification Banner */}
           {importStatus === 'success' && (
             <div className="p-3 bg-green-50 border border-green-100 dark:bg-green-950/20 dark:border-green-950/30 text-green-700 dark:text-green-400 text-xs font-semibold rounded-lg flex items-center gap-2 animate-fade-in">
               <Check className="h-4 w-4 shrink-0 text-green-500" />
@@ -256,10 +220,10 @@ export const SettingsView: React.FC = () => {
           )}
         </div>
 
-        {/* Reset Settings */}
+        {/* Danger Zone */}
         <div className="bg-white dark:bg-campus-card-dark border border-campus-border-light dark:border-campus-border-dark p-6 rounded-campus shadow-soft-sm space-y-4">
           <div>
-            <h3 className="font-bold text-sm text-campus-primary-light dark:text-campus-primary-dark text-red-600 dark:text-red-400">Danger Zone</h3>
+            <h3 className="font-bold text-sm text-red-600 dark:text-red-400">Danger Zone</h3>
             <p className="text-xs text-campus-secondary-light dark:text-campus-secondary-dark mt-0.5">
               Permanently clear your timetable data and reset the student profile.
             </p>
@@ -271,7 +235,7 @@ export const SettingsView: React.FC = () => {
               className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-red-50 text-red-600 dark:bg-red-950/20 dark:text-red-400 border border-red-100 dark:border-red-900/30 rounded-lg text-xs font-bold hover:bg-red-100 dark:hover:bg-red-950/40 transition-colors"
             >
               <RotateCcw className="h-4 w-4" />
-              Reset All Data
+              <span>Reset All Data</span>
             </button>
           </div>
         </div>
@@ -287,10 +251,10 @@ export const SettingsView: React.FC = () => {
                 <AlertTriangle className="h-6 w-6" />
               </div>
               <h3 className="font-bold text-base text-campus-primary-light dark:text-campus-primary-dark">
-                Delete all CampusOS data?
+                Delete all Idea Lab Management data?
               </h3>
               <p className="text-xs text-campus-secondary-light dark:text-campus-secondary-dark leading-relaxed">
-                This action is permanent and will clear your student profile, timetables, and attendance records from LocalStorage.
+                This action is permanent and will clear your student profile, timetables, and attendance records.
               </p>
             </div>
             
