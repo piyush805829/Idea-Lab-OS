@@ -19,6 +19,7 @@ import {
 import type { AdminDashboardStats, UserProfile, TimetableData, AuditLogItem, TimetableTemplateItem } from '../types';
 import { ReadOnlyStudentViewModal } from './ReadOnlyStudentViewModal';
 import { adminService } from '../services/adminService';
+import { getApiBaseUrl } from '../utils/api';
 
 export const AdminView: React.FC = () => {
   const { token } = useSchedule();
@@ -67,7 +68,7 @@ export const AdminView: React.FC = () => {
   const fetchStats = async () => {
     if (!token) return;
     try {
-      const res = await fetch('http://localhost:5000/api/admin/dashboard-stats', {
+      const res = await fetch(`${getApiBaseUrl()}/admin/dashboard-stats`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -83,7 +84,7 @@ export const AdminView: React.FC = () => {
   const fetchStudents = async (query = '') => {
     if (!token) return;
     try {
-      const res = await fetch(`http://localhost:5000/api/admin/students?query=${encodeURIComponent(query)}`, {
+      const res = await fetch(`${getApiBaseUrl()}/admin/students?query=${encodeURIComponent(query)}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -99,7 +100,7 @@ export const AdminView: React.FC = () => {
   const fetchTemplates = async () => {
     if (!token) return;
     try {
-      const res = await fetch('http://localhost:5000/api/admin/templates', {
+      const res = await fetch(`${getApiBaseUrl()}/admin/templates`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -114,7 +115,7 @@ export const AdminView: React.FC = () => {
   const fetchAuditLogs = async () => {
     if (!token) return;
     try {
-      const res = await fetch('http://localhost:5000/api/admin/audit-logs', {
+      const res = await fetch(`${getApiBaseUrl()}/admin/audit-logs`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -139,7 +140,7 @@ export const AdminView: React.FC = () => {
 
     try {
       if (token && token !== 'mock_admin_jwt_token') {
-        const res = await fetch(`http://localhost:5000/api/admin/students/${encodeURIComponent(idToFetch)}/details`, {
+        const res = await fetch(`${getApiBaseUrl()}/admin/students/${encodeURIComponent(idToFetch)}/details`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
@@ -178,7 +179,7 @@ export const AdminView: React.FC = () => {
 
     setSearchingIdeaLab(true);
     try {
-      const res = await fetch('http://localhost:5000/api/admin/idealab/search', {
+      const res = await fetch(`${getApiBaseUrl()}/admin/idealab/search`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -206,7 +207,7 @@ export const AdminView: React.FC = () => {
     setIdeaLabStatusMsg('');
 
     try {
-      const res = await fetch('http://localhost:5000/api/admin/idealab/mark', {
+      const res = await fetch(`${getApiBaseUrl()}/admin/idealab/mark`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -729,7 +730,7 @@ export const AdminView: React.FC = () => {
                     onClick={async () => {
                       if (!templateTitle) return;
                       try {
-                        const res = await fetch('http://localhost:5000/api/admin/templates', {
+                        const res = await fetch(`${getApiBaseUrl()}/admin/templates`, {
                           method: 'POST',
                           headers: {
                             'Content-Type': 'application/json',

@@ -12,7 +12,9 @@ import type {
   NotificationItem
 } from '../types';
 
-const API_BASE = 'http://localhost:5000/api';
+import { getApiBaseUrl } from '../utils/api';
+
+const API_BASE = getApiBaseUrl();
 
 interface AuthResponse {
   success: boolean;
