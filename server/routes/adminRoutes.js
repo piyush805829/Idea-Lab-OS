@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import { 
   getDashboardStats, 
   getAllStudents, 
@@ -6,6 +7,7 @@ import {
   markIdeaLabAttendance, 
   getIdeaLabReports 
 } from '../services/adminService.js';
+import AuditLog from '../models/AuditLog.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 import { adminMiddleware } from '../middleware/adminMiddleware.js';
 
@@ -15,12 +17,16 @@ const router = express.Router();
 router.use(authMiddleware);
 router.use(adminMiddleware);
 
-// GET /api/admin/dashboard
-router.get('/dashboard', async (req, res, next) => {
+// GET /api/admin/dashboard-stats & /api/admin/dashboard
+router.get(['/dashboard-stats', '/dashboard'], async (req, res, next) => {
   try {
     const stats = await getDashboardStats();
     return res.json({
       success: true,
+      totalStudents: stats.totalStudents,
+      todayActive: 0,
+      schedulesCreated: stats.totalStudents,
+      ideaLabToday: stats.totalIdeaLabPresent,
       stats
     });
   } catch (error) {
@@ -32,23 +38,39 @@ router.get('/dashboard', async (req, res, next) => {
 router.get('/students', async (req, res, next) => {
   try {
     const students = await getAllStudents();
-    return res.json({
-      success: true,
-      students
-    });
+    return res.json(students);
   } catch (error) {
     next(error);
   }
 });
 
-// GET /api/admin/student/:id
-router.get('/student/:id', async (req, res, next) => {
+// GET /api/admin/students/:id/details & /api/admin/student/:id
+router.get(['/students/:id/details', '/student/:id'], async (req, res, next) => {
   try {
     const studentDetail = await getStudentById(req.params.id);
-    return res.json({
-      success: true,
-      ...studentDetail
-    });
+    return res.json(studentDetail);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/admin/templates
+router.get('/templates', async (req, res, next) => {
+  try {
+    return res.json([]);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/admin/audit-logs
+router.get('/audit-logs', async (req, res, next) => {
+  try {
+    let logs = [];
+    if (mongoose.connection.readyState === 1) {
+      logs = await AuditLog.find().sort({ timestamp: -1 }).limit(50);
+    }
+    return res.json(logs);
   } catch (error) {
     next(error);
   }

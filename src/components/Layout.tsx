@@ -49,13 +49,14 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, setCurrentTab, child
     });
   };
 
-  const navigationItems = [
-    { id: 'dashboard', name: 'Dashboard', icon: Calendar },
-    { id: 'settings', name: 'Settings', icon: SettingsIcon },
-  ];
-
+  const navigationItems = [];
   if (data.profile?.role === 'admin') {
     navigationItems.push({ id: 'admin', name: 'Admin Panel', icon: ShieldCheck });
+  } else {
+    navigationItems.push(
+      { id: 'dashboard', name: 'Dashboard', icon: Calendar },
+      { id: 'settings', name: 'Settings', icon: SettingsIcon }
+    );
   }
 
   return (
