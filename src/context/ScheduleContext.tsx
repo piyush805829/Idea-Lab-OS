@@ -63,13 +63,13 @@ const defaultLabs: Record<string, LabRecordSimple> = {};
 const defaultAttendance: Record<string, AttendanceSimple> = {};
 
 export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Read token from localStorage (remember me session persistence)
-  const [token, setToken] = useState<string | null>(() => 
+  // Read token from localStorage on initial mount
+  const getStoredToken = () => 
     localStorage.getItem('campusos-token') || 
     localStorage.getItem('idealab_token') || 
-    localStorage.getItem('campusos_token')
-  );
-  
+    localStorage.getItem('campusos_token');
+
+  const [token, setToken] = useState<string | null>(getStoredToken);
   const [theme, setThemeState] = useState<Theme>(() => (localStorage.getItem('campusos-theme') as Theme) || 'light');
   
   const [data, setData] = useState<CampusOSData>({
@@ -81,7 +81,8 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   const [saveStatus, setSaveStatus] = useState<'saving' | 'saved'>('saved');
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  // Don't show login modal immediately if stored token exists (prevents 1 second login window flash on refresh)
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(() => !getStoredToken());
   const [incomingShared, setIncomingShared] = useState<SharedScheduleItem[]>([]);
   const [notifications] = useState<NotificationItem[]>([]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -126,7 +127,7 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Load student data from backend if token is saved
   const loadBackendData = useCallback(async () => {
-    const activeToken = token || localStorage.getItem('campusos-token') || localStorage.getItem('idealab_token');
+    const activeToken = token || getStoredToken();
 
     if (!activeToken) {
       setIsAuthModalOpen(true);
@@ -162,7 +163,7 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             branch: user.branch || 'CSE'
           };
 
-          // 2. Fetch User Timetable
+          // 2. Fetch User Timetable from MongoDB Atlas
           let timetable: TimetableData = {};
           try {
             const ttRes = await fetch(`${API_BASE}/timetable`, {
@@ -180,7 +181,7 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             timetable
           }));
 
-          // Automatically hide auth modal for logged in session
+          // Ensure auth modal remains hidden for active session
           setIsAuthModalOpen(false);
           return;
         }
@@ -192,7 +193,7 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Fetch incoming shared timetables
   const refreshIncomingShared = useCallback(async () => {
-    const activeToken = token || localStorage.getItem('campusos-token');
+    const activeToken = token || getStoredToken();
     if (!activeToken) return;
 
     try {
@@ -249,7 +250,7 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           }));
         }
 
-        setIsAuthModalOpen(false); // Instantly land on dashboard!
+        setIsAuthModalOpen(false);
         await loadBackendData();
         return { success: true, message: 'Login successful' };
       } else {
@@ -300,7 +301,6 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       const json = await res.json();
       if (res.ok && json.token) {
-        // Automatically save session token and redirect student to dashboard!
         saveTokenToStorage(json.token);
 
         const user = json.user;
@@ -320,7 +320,7 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           }));
         }
 
-        setIsAuthModalOpen(false); // Redirect immediately to student page!
+        setIsAuthModalOpen(false);
         await loadBackendData();
         return { success: true, message: 'Account created successfully!' };
       } else {
@@ -349,7 +349,7 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setData(prev => ({ ...prev, profile }));
   };
 
-  // Save / Modify Class
+  // Save / Modify Class & Persist to MongoDB Atlas Database
   const saveClass = async (day: DayOfWeek, slotId: string, classData: ClassSchedule | null) => {
     markSaving();
     const key = `${day}-${slotId}`;
@@ -363,18 +363,19 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     
     setData(prev => ({ ...prev, timetable: newTimetable }));
 
-    if (token) {
+    const activeToken = token || getStoredToken();
+    if (activeToken) {
       try {
         await fetch(`${API_BASE}/timetable`, {
           method: 'PUT',
           headers: { 
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}` 
+            'Authorization': `Bearer ${activeToken}` 
           },
           body: JSON.stringify({ timetable: newTimetable })
         });
       } catch (e) {
-        console.error('Error saving timetable:', e);
+        console.error('Error saving timetable to MongoDB:', e);
       }
     }
   };
@@ -404,9 +405,10 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const shareSearch = async (regNumber: string) => {
+    const activeToken = token || getStoredToken();
     try {
       const res = await fetch(`${API_BASE}/share/search?regNumber=${encodeURIComponent(regNumber)}`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${activeToken}` }
       });
       const json = await res.json();
       return { success: res.ok, data: json.user, message: json.message };
@@ -416,12 +418,13 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const shareSend = async (toRegNumber: string) => {
+    const activeToken = token || getStoredToken();
     try {
       const res = await fetch(`${API_BASE}/share`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` 
+          'Authorization': `Bearer ${activeToken}` 
         },
         body: JSON.stringify({ toRegNumber, timetableData: data.timetable })
       });
@@ -433,12 +436,13 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const importSharedSchedule = async (sharedId: string) => {
+    const activeToken = token || getStoredToken();
     try {
       const res = await fetch(`${API_BASE}/share/import`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` 
+          'Authorization': `Bearer ${activeToken}` 
         },
         body: JSON.stringify({ shareId: sharedId })
       });
@@ -461,7 +465,6 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       let newLabs = parsed.labs || (parsed.data && parsed.data.labs) || data.labs;
       let newAttendance = parsed.attendance || (parsed.data && parsed.data.attendance) || data.attendance;
 
-      // If JSON is direct timetable dictionary object
       if (!newTimetable && typeof parsed === 'object') {
         const keys = Object.keys(parsed);
         const isTimetableDict = keys.some(k => k.includes('-') || ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].some(d => k.toLowerCase().startsWith(d)));
@@ -480,8 +483,7 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         markSaving();
 
-        // Persist imported timetable to MongoDB Atlas database
-        const activeToken = token || localStorage.getItem('campusos-token') || localStorage.getItem('idealab_token');
+        const activeToken = token || getStoredToken();
         if (activeToken) {
           try {
             await fetch(`${API_BASE}/timetable`, {
@@ -518,7 +520,7 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }));
     markSaving();
 
-    const activeToken = token || localStorage.getItem('campusos-token') || localStorage.getItem('idealab_token');
+    const activeToken = token || getStoredToken();
     if (activeToken) {
       try {
         await fetch(`${API_BASE}/timetable`, {
