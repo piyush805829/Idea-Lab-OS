@@ -7,12 +7,13 @@ import compression from 'compression';
 import morgan from 'morgan';
 import bcrypt from 'bcryptjs';
 
+import connectDB from './config/database.js';
 import authRoutes from './routes/authRoutes.js';
 import timetableRoutes from './routes/timetableRoutes.js';
 import shareRoutes from './routes/shareRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 
-// Legacy routes fallback compatibility
+// Legacy routes compatibility
 import legacyAuthRoutes from './routes/auth.js';
 import legacyStudentRoutes from './routes/student.js';
 import legacyShareRoutes from './routes/share.js';
@@ -25,17 +26,14 @@ import { initMemoryDb } from './services/memoryDb.js';
 
 dotenv.config();
 
-// Disable command buffering so queries fail-fast when DB is connecting/offline
-mongoose.set('bufferCommands', false);
-
 const app = express();
 const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/idealab_os';
+const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
 
 // Security & Optimization Middleware
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({
-  origin: process.env.CLIENT_URL || '*',
+  origin: [CLIENT_URL, 'http://localhost:5173', 'http://127.0.0.1:5173'],
   credentials: true
 }));
 app.use(compression());
@@ -48,7 +46,7 @@ app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/signup', authLimiter);
 app.use('/api/', apiLimiter);
 
-// Seed Default Accounts
+// Seed Default Accounts into MongoDB Atlas
 const seedTestingAccounts = async () => {
   await initMemoryDb();
 
@@ -67,7 +65,7 @@ const seedTestingAccounts = async () => {
           section: 'A',
           batch: '1'
         });
-        console.log('[SEED] Default Admin Account (ADMIN001) registered.');
+        console.log('✓ Default Admin Account (ADMIN001) initialized.');
       }
 
       // Seed Student Account (PCEA25CS123 / student123)
@@ -83,7 +81,7 @@ const seedTestingAccounts = async () => {
           section: 'B',
           batch: '2'
         });
-        console.log('[SEED] Default Student Account (PCEA25CS123) registered.');
+        console.log('✓ Default Student Account (PCEA25CS123) initialized.');
       }
     } catch (err) {
       console.warn('[SEED WARNING]', err.message);
@@ -91,29 +89,13 @@ const seedTestingAccounts = async () => {
   }
 };
 
-// MongoDB Atlas Connection
-console.log('[DB] Connecting to MongoDB Atlas...');
-mongoose
-  .connect(MONGO_URI, {
-    serverSelectionTimeoutMS: 5000
-  })
-  .then(() => {
-    console.log('[DB] Connected to MongoDB Atlas ("idealab_os")');
-    seedTestingAccounts();
-  })
-  .catch((err) => {
-    console.warn('[DB WARNING] Could not connect to MongoDB Atlas:', err.message);
-    console.log('[DB] Running fail-safe Memory DB for seamless availability.');
-    seedTestingAccounts();
-  });
-
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/timetable', timetableRoutes);
 app.use('/api/share', shareRoutes);
 app.use('/api/admin', adminRoutes);
 
-// Legacy routes compatibility
+// Legacy routes fallback compatibility
 app.use('/api/legacy/auth', legacyAuthRoutes);
 app.use('/api/student', legacyStudentRoutes);
 
@@ -130,6 +112,14 @@ app.get('/api/health', (req, res) => {
 // Centralized Error Handling Middleware
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-  console.log(`🚀 IdeaLab OS Backend Server running on http://localhost:${PORT}`);
-});
+// Connect to MongoDB Atlas and Start Server
+const startServer = async () => {
+  await connectDB();
+  await seedTestingAccounts();
+
+  app.listen(PORT, () => {
+    console.log(`✓ Server Running on Port ${PORT}`);
+  });
+};
+
+startServer();
