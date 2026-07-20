@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import type { AdminDashboardStats, UserProfile, TimetableData, AuditLogItem, TimetableTemplateItem } from '../types';
 import { ReadOnlyStudentViewModal } from './ReadOnlyStudentViewModal';
+import { adminService } from '../services/adminService';
 
 export const AdminView: React.FC = () => {
   const { token } = useSchedule();
@@ -251,28 +252,13 @@ export const AdminView: React.FC = () => {
     }
   };
 
-  // Download Excel Report
-  const handleDownloadExcel = () => {
-    let url = `http://localhost:5000/api/admin/idealab/export?range=${exportRange}`;
-    if (exportRange === 'custom') {
-      url += `&startDate=${startDate}&endDate=${endDate}`;
+  // Download Excel Report (Format: Name | Reg No | Date | Time Slot)
+  const handleDownloadExcel = async () => {
+    try {
+      await adminService.exportExcelReport();
+    } catch (err) {
+      console.error('Error downloading Excel report:', err);
     }
-
-    // Trigger file download with Auth header via temporary fetch blob
-    fetch(url, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
-      .then(res => res.blob())
-      .then(blob => {
-        const downloadUrl = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = downloadUrl;
-        a.download = `IdeaLab_Attendance_Report_${Date.now()}.xlsx`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-      })
-      .catch(err => console.error('Error downloading Excel report:', err));
   };
 
   const navTabs: { id: 'analytics' | 'directory' | 'idealab' | 'reports' | 'templates' | 'audit'; name: string; icon: any }[] = [

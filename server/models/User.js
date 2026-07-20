@@ -1,15 +1,57 @@
 import mongoose from 'mongoose';
 
-const userSchema = new mongoose.Schema({
-  fullName: { type: String, required: true },
-  regNumber: { type: String, required: true, unique: true, uppercase: true, trim: true },
-  password: { type: String, required: true },
-  role: { type: String, enum: ['student', 'admin'], default: 'student' },
-  section: { type: String, default: '' },
-  batch: { type: String, default: '' },
-  branch: { type: String, default: '' },
-  profilePicture: { type: String, default: '' },
-  lastActive: { type: Date, default: Date.now },
-}, { timestamps: true, bufferCommands: false });
+const userSchema = new mongoose.Schema(
+  {
+    fullName: {
+      type: String,
+      required: [true, 'Full name is required'],
+      trim: true
+    },
+    registrationNumber: {
+      type: String,
+      required: [true, 'Registration number is required'],
+      unique: true,
+      uppercase: true,
+      trim: true,
+      index: true
+    },
+    password: {
+      type: String,
+      required: [true, 'Password is required']
+    },
+    role: {
+      type: String,
+      enum: ['student', 'admin'],
+      default: 'student'
+    },
+    branch: {
+      type: String,
+      default: 'CSE',
+      trim: true
+    },
+    year: {
+      type: String,
+      default: '1st Year',
+      trim: true
+    },
+    section: {
+      type: String,
+      default: 'A',
+      trim: true
+    },
+    batch: {
+      type: String,
+      default: '1',
+      trim: true
+    }
+  },
+  {
+    timestamps: true,
+    bufferCommands: false
+  }
+);
 
-export default mongoose.model('User', userSchema);
+// Prevent re-compilation in hot reloading
+const User = mongoose.models.User || mongoose.model('User', userSchema, 'users');
+
+export default User;

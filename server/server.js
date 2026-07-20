@@ -2,119 +2,134 @@ import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { MongoMemoryServer } from 'mongodb-memory-server';
-
-import authRoutes from './routes/auth.js';
-import studentRoutes from './routes/student.js';
-import shareRoutes from './routes/share.js';
-import adminRoutes from './routes/admin.js';
-
+import helmet from 'helmet';
+import compression from 'compression';
+import morgan from 'morgan';
 import bcrypt from 'bcryptjs';
+
+import authRoutes from './routes/authRoutes.js';
+import timetableRoutes from './routes/timetableRoutes.js';
+import shareRoutes from './routes/shareRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
+
+// Legacy routes fallback compatibility
+import legacyAuthRoutes from './routes/auth.js';
+import legacyStudentRoutes from './routes/student.js';
+import legacyShareRoutes from './routes/share.js';
+import legacyAdminRoutes from './routes/admin.js';
+
+import { apiLimiter, authLimiter } from './middleware/rateLimiter.js';
+import { errorHandler } from './middleware/errorHandler.js';
 import User from './models/User.js';
-import Schedule from './models/Schedule.js';
-import LabRecord from './models/LabRecord.js';
-import Attendance from './models/Attendance.js';
 import { initMemoryDb } from './services/memoryDb.js';
 
 dotenv.config();
 
-// Disable Mongoose command buffering so queries fail-fast when DB is disconnected
+// Disable command buffering so queries fail-fast when DB is connecting/offline
 mongoose.set('bufferCommands', false);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/campusos';
+const MONGO_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/idealab_os';
 
-app.use(cors());
+// Security & Optimization Middleware
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(cors({
+  origin: process.env.CLIENT_URL || '*',
+  credentials: true
+}));
+app.use(compression());
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
 
-// Seed default Testing Accounts (Admin & Student) if not present
+// Apply Rate Limiters
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/signup', authLimiter);
+app.use('/api/', apiLimiter);
+
+// Seed Default Accounts
 const seedTestingAccounts = async () => {
-  // Always initialize memory DB first
   await initMemoryDb();
 
   if (mongoose.connection.readyState === 1) {
     try {
-      // Seed Admin Account
-      const adminExists = await User.findOne({ regNumber: 'ADMIN001' });
+      // Seed Admin Account (ADMIN001 / admin123)
+      const adminExists = await User.findOne({ registrationNumber: 'ADMIN001' });
       if (!adminExists) {
         const hashedPassword = await bcrypt.hash('admin123', 10);
-        const adminUser = new User({
+        await User.create({
           fullName: 'System Administrator',
-          regNumber: 'ADMIN001',
+          registrationNumber: 'ADMIN001',
           password: hashedPassword,
           role: 'admin',
-          section: 'ADMIN',
-          batch: 'ADMIN',
-          branch: 'ADMIN'
+          branch: 'CSE',
+          section: 'A',
+          batch: '1'
         });
-        await adminUser.save();
-        await Schedule.create({ userId: adminUser._id, timetable: {} });
-        await LabRecord.create({ userId: adminUser._id, labs: {} });
-        await Attendance.create({ userId: adminUser._id, attendance: {} });
-        console.log('Default Admin Account seeded in Mongoose: ADMIN001 / admin123');
+        console.log('[SEED] Default Admin Account (ADMIN001) registered.');
       }
 
-      // Seed Student Account (Piyush / PCEA25CS123)
-      const studentExists = await User.findOne({ regNumber: 'PCEA25CS123' });
+      // Seed Student Account (PCEA25CS123 / student123)
+      const studentExists = await User.findOne({ registrationNumber: 'PCEA25CS123' });
       if (!studentExists) {
         const hashedPassword = await bcrypt.hash('student123', 10);
-        const studentUser = new User({
+        await User.create({
           fullName: 'Piyush',
-          regNumber: 'PCEA25CS123',
+          registrationNumber: 'PCEA25CS123',
           password: hashedPassword,
           role: 'student',
+          branch: 'CSE',
           section: 'B',
-          batch: '2',
-          branch: 'CSE'
+          batch: '2'
         });
-        await studentUser.save();
-        await Schedule.create({ userId: studentUser._id, timetable: {} });
-        await LabRecord.create({ userId: studentUser._id, labs: {} });
-        await Attendance.create({ userId: studentUser._id, attendance: {} });
-        console.log('Default Student Account seeded in Mongoose: PCEA25CS123 / student123');
+        console.log('[SEED] Default Student Account (PCEA25CS123) registered.');
       }
     } catch (err) {
-      console.warn('Mongoose seeding skipped:', err.message);
+      console.warn('[SEED WARNING]', err.message);
     }
   }
 };
 
-// Mount API routes
+// MongoDB Atlas Connection
+console.log('[DB] Connecting to MongoDB Atlas...');
+mongoose
+  .connect(MONGO_URI, {
+    serverSelectionTimeoutMS: 5000
+  })
+  .then(() => {
+    console.log('[DB] Connected to MongoDB Atlas ("idealab_os")');
+    seedTestingAccounts();
+  })
+  .catch((err) => {
+    console.warn('[DB WARNING] Could not connect to MongoDB Atlas:', err.message);
+    console.log('[DB] Running fail-safe Memory DB for seamless availability.');
+    seedTestingAccounts();
+  });
+
+// API Routes
 app.use('/api/auth', authRoutes);
-app.use('/api/student', studentRoutes);
+app.use('/api/timetable', timetableRoutes);
 app.use('/api/share', shareRoutes);
 app.use('/api/admin', adminRoutes);
 
-// Base route test
+// Legacy routes compatibility
+app.use('/api/legacy/auth', legacyAuthRoutes);
+app.use('/api/student', legacyStudentRoutes);
+
+// Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'CampusOS API Server Running' });
+  res.json({
+    status: 'ok',
+    app: 'IdeaLab OS',
+    timestamp: new Date().toISOString(),
+    dbConnected: mongoose.connection.readyState === 1
+  });
 });
 
-// Start DB connection with automatic MongoMemoryServer fallback
-const startServer = async () => {
-  try {
-    await mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 2000 });
-    console.log(`Connected to MongoDB Atlas / Local DB: ${MONGO_URI}`);
-  } catch (err) {
-    console.warn(`Local MongoDB service not found on ${MONGO_URI}: ${err.message}`);
-    console.log('Starting Embedded In-Memory MongoDB Engine...');
-    try {
-      const mongod = await MongoMemoryServer.create();
-      const memoryUri = mongod.getUri();
-      await mongoose.connect(memoryUri, { serverSelectionTimeoutMS: 5000 });
-      console.log(`Connected to Embedded In-Memory MongoDB: ${memoryUri}`);
-    } catch (memErr) {
-      console.warn('Embedded MongoDB launcher skipped, relying on fast memoryDb store:', memErr.message);
-    }
-  }
+// Centralized Error Handling Middleware
+app.use(errorHandler);
 
-  // Seed testing accounts once server is starting
-  await seedTestingAccounts();
-
-  app.listen(PORT, () => {
-    console.log(`CampusOS Backend Server running on port ${PORT}`);
-  });
-};
-
-startServer();
+app.listen(PORT, () => {
+  console.log(`🚀 IdeaLab OS Backend Server running on http://localhost:${PORT}`);
+});
