@@ -177,7 +177,13 @@ export const searchStudentForIdeaLab = async (queryStr) => {
       regNumber: student.registrationNumber,
       date: { $gte: startOfDay, $lte: endOfDay }
     });
-    const markedSlots = markedRecords.map(r => r.slot);
+    
+    const markedSlots = [];
+    markedRecords.forEach(r => {
+      if (r.slot) markedSlots.push(r.slot);
+      if (r.lectureTime) markedSlots.push(r.lectureTime);
+      if (r.subject) markedSlots.push(r.subject);
+    });
 
     const profile = {
       id: student._id.toString(),
@@ -194,7 +200,7 @@ export const searchStudentForIdeaLab = async (queryStr) => {
     return {
       student: profile,
       timetable,
-      markedSlots,
+      markedSlots: Array.from(new Set(markedSlots)),
       matchingStudents: students.map(s => ({
         id: s._id.toString(),
         fullName: s.fullName,
@@ -222,9 +228,14 @@ export const searchStudentForIdeaLab = async (queryStr) => {
   const memTt = memoryStore.timetables[student._id] || {};
   const timetable = safeFlattenTimetableDoc(memTt);
 
-  const markedSlots = memoryStore.ideaLabAttendance
+  const markedSlots = [];
+  memoryStore.ideaLabAttendance
     .filter(r => r.regNumber.toUpperCase() === student.registrationNumber.toUpperCase())
-    .map(r => r.slot);
+    .forEach(r => {
+      if (r.slot) markedSlots.push(r.slot);
+      if (r.lectureTime) markedSlots.push(r.lectureTime);
+      if (r.subject) markedSlots.push(r.subject);
+    });
 
   return {
     student: {
@@ -238,7 +249,7 @@ export const searchStudentForIdeaLab = async (queryStr) => {
       branch: student.branch || 'CSE'
     },
     timetable,
-    markedSlots,
+    markedSlots: Array.from(new Set(markedSlots)),
     matchingStudents: matching.map(s => ({
       id: s._id,
       fullName: s.fullName,
@@ -268,10 +279,15 @@ export const markIdeaLabAttendance = async ({ regNumber, reason, subject, teache
       throw new Error(`Student "${regNumber}" not found.`);
     }
 
+    const possibleSlots = Array.from(new Set([slot, subject, 'Slot 1'].filter(Boolean)));
+
     let record = await IdeaLabAttendance.findOne({
       regNumber: student.registrationNumber,
-      slot: slot || 'Slot 1',
-      date: { $gte: startOfDay, $lte: endOfDay }
+      date: { $gte: startOfDay, $lte: endOfDay },
+      $or: [
+        { slot: { $in: possibleSlots } },
+        { lectureTime: { $in: possibleSlots } }
+      ]
     });
 
     if (record) {
@@ -279,6 +295,8 @@ export const markIdeaLabAttendance = async ({ regNumber, reason, subject, teache
       record.subject = subject || record.subject || 'Idea Lab Work';
       record.teacher = teacher || record.teacher;
       record.room = room || record.room;
+      record.slot = slot || record.slot;
+      record.lectureTime = slot || record.lectureTime;
       await record.save();
     } else {
       record = await IdeaLabAttendance.create({
@@ -293,6 +311,7 @@ export const markIdeaLabAttendance = async ({ regNumber, reason, subject, teache
         teacher: teacher || 'Instructor',
         room: room || 'Idea Lab',
         slot: slot || 'Slot 1',
+        lectureTime: slot || 'Slot 1',
         markedBy
       });
     }
@@ -314,7 +333,7 @@ export const markIdeaLabAttendance = async ({ regNumber, reason, subject, teache
   }
 
   memoryStore.ideaLabAttendance = memoryStore.ideaLabAttendance.filter(
-    r => !(r.regNumber.toUpperCase() === student.registrationNumber.toUpperCase() && r.slot === slot)
+    r => !(r.regNumber.toUpperCase() === student.registrationNumber.toUpperCase() && (r.slot === slot || r.subject === subject))
   );
 
   const record = {
@@ -330,6 +349,7 @@ export const markIdeaLabAttendance = async ({ regNumber, reason, subject, teache
     teacher: teacher || 'Instructor',
     room: room || 'Idea Lab',
     slot: slot || 'Slot 1',
+    lectureTime: slot || 'Slot 1',
     createdAt: new Date().toISOString()
   };
 
@@ -337,7 +357,7 @@ export const markIdeaLabAttendance = async ({ regNumber, reason, subject, teache
   return record;
 };
 
-export const cancelIdeaLabAttendance = async ({ regNumber, slot, subject }) => {
+export const cancelIdeaLabAttendance = async ({ regNumber, slot, subject, slotKey, timeLabel, lectureTime }) => {
   const regUpper = (regNumber || '').trim().toUpperCase();
 
   const startOfDay = new Date();
@@ -346,6 +366,14 @@ export const cancelIdeaLabAttendance = async ({ regNumber, slot, subject }) => {
   const endOfDay = new Date();
   endOfDay.setHours(23, 59, 59, 999);
 
+  const possibleMatches = Array.from(new Set([
+    slot,
+    slotKey,
+    timeLabel,
+    lectureTime,
+    subject
+  ].filter(Boolean)));
+
   if (mongoose.connection.readyState === 1) {
     let student = await User.findOne({ registrationNumber: regUpper });
     if (!student) {
@@ -353,26 +381,39 @@ export const cancelIdeaLabAttendance = async ({ regNumber, slot, subject }) => {
     }
     const targetReg = student ? student.registrationNumber : regUpper;
 
-    await IdeaLabAttendance.deleteMany({
+    const deleteFilter = {
       regNumber: targetReg,
-      slot: slot || 'Slot 1',
       date: { $gte: startOfDay, $lte: endOfDay }
-    });
+    };
+
+    if (possibleMatches.length > 0) {
+      deleteFilter.$or = [
+        { slot: { $in: possibleMatches } },
+        { lectureTime: { $in: possibleMatches } },
+        { subject: { $in: possibleMatches } }
+      ];
+    }
+
+    await IdeaLabAttendance.deleteMany(deleteFilter);
 
     await AuditLog.create({
       action: 'CANCELLED_IDEALAB_ATTENDANCE',
       performedBy: 'Admin',
       targetUser: targetReg,
-      details: `Cancelled Idea Lab attendance for ${targetReg} (${slot || subject})`
+      details: `Cancelled Idea Lab attendance for ${targetReg} (${slot || subject || 'Slot'})`
     }).catch(() => {});
 
     return { success: true, message: `Attendance cancelled for ${targetReg}` };
   }
 
   // Memory DB Fallback
-  memoryStore.ideaLabAttendance = memoryStore.ideaLabAttendance.filter(
-    r => !(r.regNumber.toUpperCase() === regUpper && r.slot === slot)
-  );
+  memoryStore.ideaLabAttendance = memoryStore.ideaLabAttendance.filter(r => {
+    if (r.regNumber.toUpperCase() !== regUpper) return true;
+    const dt = new Date(r.date || r.createdAt);
+    if (dt < startOfDay || dt > endOfDay) return true;
+    return !possibleMatches.includes(r.slot) && !possibleMatches.includes(r.subject) && !possibleMatches.includes(r.lectureTime);
+  });
+
   return { success: true, message: `Attendance cancelled for ${regUpper}` };
 };
 
@@ -391,7 +432,7 @@ export const getIdeaLabReports = async () => {
   for (const r of records) {
     const dt = new Date(r.date || r.createdAt);
     const dateFormatted = `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
-    const slotLabel = r.slot || r.subject || 'Slot 1';
+    const slotLabel = r.slot || r.lectureTime || r.subject || 'Slot 1';
     const uniqueKey = `${r.regNumber}_${dateFormatted}_${slotLabel}`;
 
     if (!seenKeys.has(uniqueKey)) {

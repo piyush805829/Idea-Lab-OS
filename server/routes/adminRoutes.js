@@ -163,7 +163,7 @@ router.post('/idealab/batch-mark', async (req, res, next) => {
 // POST /api/admin/idealab/cancel & /api/admin/attendance/cancel
 router.post(['/idealab/cancel', '/attendance/cancel'], async (req, res, next) => {
   try {
-    const { regNumber, regNo, slot, subject, lectureTime } = req.body;
+    const { regNumber, regNo, slot, slotKey, timeLabel, subject, lectureTime } = req.body;
     const targetReg = regNumber || regNo;
 
     if (!targetReg) {
@@ -172,8 +172,11 @@ router.post(['/idealab/cancel', '/attendance/cancel'], async (req, res, next) =>
 
     const result = await cancelIdeaLabAttendance({
       regNumber: targetReg,
-      slot: slot || lectureTime,
-      subject
+      slot: slot || slotKey || timeLabel || lectureTime,
+      slotKey,
+      timeLabel,
+      subject,
+      lectureTime: lectureTime || timeLabel
     });
 
     return res.json({

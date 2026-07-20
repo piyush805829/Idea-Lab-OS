@@ -247,7 +247,7 @@ export const AdminView: React.FC = () => {
         },
         body: JSON.stringify({
           studentName: student.fullName,
-          regNumber: student.regNumber,
+          regNumber: student.regNumber || (student as any).registrationNumber,
           department: student.branch || 'N/A',
           section: student.section || 'N/A',
           batch: student.batch || 'N/A',
@@ -255,6 +255,7 @@ export const AdminView: React.FC = () => {
           teacher,
           room,
           slot: timeLabel,
+          slotKey,
           lectureTime: timeLabel,
           reason: 'Idea Lab Work'
         })
@@ -266,7 +267,7 @@ export const AdminView: React.FC = () => {
         if (expandedStudentData) {
           setExpandedStudentData(prev => prev ? ({
             ...prev,
-            markedSlots: Array.from(new Set([...(prev.markedSlots || []), slotKey, timeLabel]))
+            markedSlots: Array.from(new Set([...(prev.markedSlots || []), slotKey, timeLabel, subjectMissed]))
           }) : null);
         }
         fetchStats();
@@ -295,6 +296,8 @@ export const AdminView: React.FC = () => {
         body: JSON.stringify({
           regNumber,
           slot: timeLabel,
+          slotKey,
+          timeLabel,
           subject: subjectMissed,
           lectureTime: timeLabel
         })
@@ -306,7 +309,7 @@ export const AdminView: React.FC = () => {
         if (expandedStudentData) {
           setExpandedStudentData(prev => prev ? ({
             ...prev,
-            markedSlots: (prev.markedSlots || []).filter(s => s !== slotKey && s !== timeLabel)
+            markedSlots: (prev.markedSlots || []).filter(s => s !== slotKey && s !== timeLabel && s !== subjectMissed)
           }) : null);
         }
         fetchStats();
