@@ -9,7 +9,7 @@ export const getDashboardStats = async () => {
   if (mongoose.connection.readyState === 1) {
     const totalStudents = await User.countDocuments({ role: 'student' });
     const totalIdeaLabPresent = await IdeaLabAttendance.countDocuments();
-    const activeLabsCount = 5; // Configured labs count
+    const activeLabsCount = 5;
     const systemStatus = 'Operational (MongoDB Atlas)';
 
     return {
@@ -61,7 +61,6 @@ export const getStudentById = async (studentIdOrReg) => {
     if (student) {
       const tt = await Timetable.findOne({ userId: student._id });
       if (tt) {
-        // Flatten weekly map keys into key-value map
         const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
         days.forEach((d) => {
           if (tt[d]) {
@@ -90,13 +89,112 @@ export const getStudentById = async (studentIdOrReg) => {
   throw new Error('Student profile not found.');
 };
 
-export const markIdeaLabAttendance = async ({ regNumber, reason, subject, teacher, room, slot, markedBy }) => {
-  const regUpper = regNumber.trim().toUpperCase();
+export const searchStudentForIdeaLab = async (queryStr) => {
+  const q = (queryStr || '').trim();
+  if (!q) throw new Error('Search query is required.');
+
+  const qUpper = q.toUpperCase();
 
   if (mongoose.connection.readyState === 1) {
-    const student = await User.findOne({ registrationNumber: regUpper });
+    const students = await User.find({
+      role: 'student',
+      $or: [
+        { registrationNumber: new RegExp(q, 'i') },
+        { fullName: new RegExp(q, 'i') }
+      ]
+    }).select('-password');
+
+    if (!students || students.length === 0) {
+      throw new Error(`No student found matching "${q}".`);
+    }
+
+    const student = students.find(s => s.registrationNumber.toUpperCase() === qUpper) || students[0];
+
+    const tt = await Timetable.findOne({ userId: student._id });
+    let timetable = {};
+    if (tt) {
+      const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+      days.forEach((d) => {
+        if (tt[d]) {
+          const mapObj = Object.fromEntries(tt[d] || new Map());
+          Object.assign(timetable, mapObj);
+        }
+      });
+    }
+
+    const profile = {
+      id: student._id,
+      fullName: student.fullName,
+      regNumber: student.registrationNumber,
+      role: student.role,
+      section: student.section || 'A',
+      batch: student.batch || '1',
+      branch: student.branch || 'CSE'
+    };
+
+    return {
+      student: profile,
+      timetable,
+      matchingStudents: students.map(s => ({
+        id: s._id,
+        fullName: s.fullName,
+        regNumber: s.registrationNumber,
+        section: s.section,
+        branch: s.branch
+      }))
+    };
+  }
+
+  // Memory DB Fallback
+  const matching = Object.values(memoryStore.users).filter(u => 
+    u.role === 'student' && (
+      u.registrationNumber.toUpperCase().includes(qUpper) || 
+      u.fullName.toLowerCase().includes(q.toLowerCase())
+    )
+  );
+
+  if (matching.length === 0) {
+    throw new Error(`No student found matching "${q}".`);
+  }
+
+  const student = matching.find(s => s.registrationNumber.toUpperCase() === qUpper) || matching[0];
+  const memTt = memoryStore.timetables[student._id] || {};
+  let timetable = {};
+  ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].forEach((d) => {
+    if (memTt[d]) Object.assign(timetable, memTt[d]);
+  });
+
+  return {
+    student: {
+      id: student._id,
+      fullName: student.fullName,
+      regNumber: student.registrationNumber,
+      role: student.role,
+      section: student.section || 'A',
+      batch: student.batch || '1',
+      branch: student.branch || 'CSE'
+    },
+    timetable,
+    matchingStudents: matching.map(s => ({
+      id: s._id,
+      fullName: s.fullName,
+      regNumber: s.registrationNumber,
+      section: s.section,
+      branch: s.branch
+    }))
+  };
+};
+
+export const markIdeaLabAttendance = async ({ regNumber, reason, subject, teacher, room, slot, markedBy }) => {
+  const regUpper = (regNumber || '').trim().toUpperCase();
+
+  if (mongoose.connection.readyState === 1) {
+    let student = await User.findOne({ registrationNumber: regUpper });
     if (!student) {
-      throw new Error(`Student with Reg Number "${regUpper}" not found.`);
+      student = await User.findOne({ fullName: new RegExp(regNumber, 'i') });
+    }
+    if (!student) {
+      throw new Error(`Student "${regNumber}" not found.`);
     }
 
     const record = await IdeaLabAttendance.create({
@@ -118,16 +216,16 @@ export const markIdeaLabAttendance = async ({ regNumber, reason, subject, teache
       action: 'MARKED_IDEALAB_ATTENDANCE',
       performedBy: 'Admin',
       targetUser: student.registrationNumber,
-      details: `Marked Idea Lab attendance for ${student.fullName} (${subject})`
+      details: `Marked Idea Lab attendance for ${student.fullName} (${subject || 'General'})`
     }).catch(() => {});
 
     return record;
   }
 
   // Memory DB Fallback
-  const student = memoryStore.users[regUpper];
+  const student = memoryStore.users[regUpper] || Object.values(memoryStore.users).find(u => u.fullName.toLowerCase() === regNumber.toLowerCase());
   if (!student) {
-    throw new Error(`Student with Reg Number "${regUpper}" not found.`);
+    throw new Error(`Student "${regNumber}" not found.`);
   }
 
   const record = {
@@ -159,7 +257,6 @@ export const getIdeaLabReports = async () => {
     records = memoryStore.ideaLabAttendance;
   }
 
-  // Format explicitly into requested 4-column structure: Name | Reg No | Date | Time Slot
   const formattedReport = records.map((r) => {
     const dt = new Date(r.date || r.createdAt);
     const dateFormatted = `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;

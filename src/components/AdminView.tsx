@@ -357,7 +357,7 @@ export const AdminView: React.FC = () => {
               ) : (
                 <div className="space-y-2.5">
                   {stats.mostMissedSubjects.map((item, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3 bg-campus-bg-light dark:bg-campus-bg-dark rounded-xl border border-campus-border-light dark:border-campus-border-dark">
+                    <div key={item.subject ? `missed-${item.subject}-${idx}` : `missed-${idx}`} className="flex items-center justify-between p-3 bg-campus-bg-light dark:bg-campus-bg-dark rounded-xl border border-campus-border-light dark:border-campus-border-dark">
                       <span className="text-xs font-bold">{item.subject}</span>
                       <span className="text-xs font-mono font-bold px-2.5 py-0.5 bg-orange-500/10 text-orange-600 dark:text-orange-400 rounded-lg">
                         {item.count} skips
@@ -381,7 +381,7 @@ export const AdminView: React.FC = () => {
               ) : (
                 <div className="space-y-2.5">
                   {stats.mostActiveStudents.map((st, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3 bg-campus-bg-light dark:bg-campus-bg-dark rounded-xl border border-campus-border-light dark:border-campus-border-dark">
+                    <div key={st.regNumber ? `active-${st.regNumber}-${idx}` : `active-${idx}`} className="flex items-center justify-between p-3 bg-campus-bg-light dark:bg-campus-bg-dark rounded-xl border border-campus-border-light dark:border-campus-border-dark">
                       <div>
                         <p className="text-xs font-bold">{st.fullName}</p>
                         <p className="text-[10px] text-campus-secondary-light dark:text-campus-secondary-dark font-mono font-medium">
@@ -422,8 +422,8 @@ export const AdminView: React.FC = () => {
 
           {/* Directory Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {studentsList.map((st) => (
-              <div key={st.id || st.regNumber} className="bg-white dark:bg-campus-card-dark border border-campus-border-light dark:border-campus-border-dark p-4 rounded-campus shadow-soft-sm flex items-center justify-between gap-3 hover:border-black/30 dark:hover:border-white/30 transition">
+            {studentsList.map((st, idx) => (
+              <div key={st.id || (st as any)._id || st.regNumber || `student-${idx}`} className="bg-white dark:bg-campus-card-dark border border-campus-border-light dark:border-campus-border-dark p-4 rounded-campus shadow-soft-sm flex items-center justify-between gap-3 hover:border-black/30 dark:hover:border-white/30 transition">
                 <div>
                   <h4 className="text-xs font-bold">{st.fullName}</h4>
                   <p className="text-[11px] font-mono text-campus-secondary-light dark:text-campus-secondary-dark font-medium mt-0.5">
@@ -467,7 +467,7 @@ export const AdminView: React.FC = () => {
                 Idea Lab Lecture Skip Attendance Logger
               </h3>
               <p className="text-xs text-campus-secondary-light dark:text-campus-secondary-dark mt-0.5">
-                Whenever a student skips a lecture to work in Idea Lab, search their Registration Number to record attendance.
+                Whenever a student skips a lecture to work in Idea Lab, search by Name or Registration Number to record attendance.
               </p>
             </div>
 
@@ -477,8 +477,8 @@ export const AdminView: React.FC = () => {
                 type="text"
                 value={ideaLabRegInput}
                 onChange={(e) => setIdeaLabRegInput(e.target.value)}
-                placeholder="Enter Student Registration Number (e.g. PCEA25CS123)..."
-                className="flex-1 px-3.5 py-2 bg-campus-bg-light dark:bg-campus-bg-dark border border-campus-border-light dark:border-campus-border-dark rounded-lg text-xs font-medium uppercase focus:outline-none"
+                placeholder="Enter Student Name or Registration Number (e.g. Piyush or PCEA25CS123)..."
+                className="flex-1 px-3.5 py-2 bg-campus-bg-light dark:bg-campus-bg-dark border border-campus-border-light dark:border-campus-border-dark rounded-lg text-xs font-medium focus:outline-none"
               />
               <button
                 type="submit"
@@ -663,8 +663,8 @@ export const AdminView: React.FC = () => {
                   No master timetable templates created yet.
                 </p>
               ) : (
-                templates.map((tmpl) => (
-                  <div key={tmpl._id} className="p-4 bg-campus-bg-light dark:bg-campus-bg-dark rounded-xl border border-campus-border-light dark:border-campus-border-dark space-y-2">
+                templates.map((tmpl, idx) => (
+                  <div key={tmpl._id || `tmpl-${idx}`} className="p-4 bg-campus-bg-light dark:bg-campus-bg-dark rounded-xl border border-campus-border-light dark:border-campus-border-dark space-y-2">
                     <h4 className="text-xs font-bold">{tmpl.title}</h4>
                     <p className="text-[11px] text-campus-secondary-light dark:text-campus-secondary-dark font-mono">
                       Branch: {tmpl.branch || 'All'} • Section: {tmpl.section || 'All'}
@@ -775,8 +775,8 @@ export const AdminView: React.FC = () => {
             </h3>
 
             <div className="space-y-2 max-h-[60vh] overflow-y-auto">
-              {auditLogs.map((log) => (
-                <div key={log._id} className="p-3 bg-campus-bg-light dark:bg-campus-bg-dark rounded-xl border border-campus-border-light dark:border-campus-border-dark flex items-center justify-between text-xs">
+              {auditLogs.map((log, idx) => (
+                <div key={log._id || `log-${idx}`} className="p-3 bg-campus-bg-light dark:bg-campus-bg-dark rounded-xl border border-campus-border-light dark:border-campus-border-dark flex items-center justify-between text-xs">
                   <div>
                     <span className="font-bold font-mono text-[10px] px-2 py-0.5 bg-black/10 dark:bg-white/10 rounded mr-2 uppercase">
                       {log.action}

@@ -4,6 +4,7 @@ import {
   getDashboardStats, 
   getAllStudents, 
   getStudentById, 
+  searchStudentForIdeaLab,
   markIdeaLabAttendance, 
   getIdeaLabReports 
 } from '../services/adminService.js';
@@ -54,6 +55,27 @@ router.get(['/students/:id/details', '/student/:id'], async (req, res, next) => 
   }
 });
 
+// POST /api/admin/idealab/search & /api/admin/search
+router.post(['/idealab/search', '/search'], async (req, res, next) => {
+  try {
+    const queryStr = req.body.query || req.body.regNumber || req.body.registrationNumber;
+    if (!queryStr) {
+      return res.status(400).json({ success: false, message: 'Student registration number or name is required.' });
+    }
+
+    const result = await searchStudentForIdeaLab(queryStr);
+    return res.json({
+      success: true,
+      ...result
+    });
+  } catch (error) {
+    if (error.message && error.message.includes('not found')) {
+      return res.status(404).json({ success: false, message: error.message });
+    }
+    next(error);
+  }
+});
+
 // GET /api/admin/templates
 router.get('/templates', async (req, res, next) => {
   try {
@@ -76,28 +98,29 @@ router.get('/audit-logs', async (req, res, next) => {
   }
 });
 
-// POST /api/admin/attendance
-router.post('/attendance', async (req, res, next) => {
+// POST /api/admin/attendance & /api/admin/idealab/mark
+router.post(['/attendance', '/idealab/mark'], async (req, res, next) => {
   try {
-    const { regNumber, reason, subject, teacher, room, slot } = req.body;
+    const { regNumber, regNo, reason, subject, subjectMissed, teacher, room, slot, lectureTime } = req.body;
+    const targetReg = regNumber || regNo;
 
-    if (!regNumber) {
+    if (!targetReg) {
       return res.status(400).json({ success: false, message: 'Registration number is required.' });
     }
 
     const record = await markIdeaLabAttendance({
-      regNumber,
+      regNumber: targetReg,
       reason,
-      subject,
+      subject: subject || subjectMissed,
       teacher,
       room,
-      slot,
+      slot: slot || lectureTime,
       markedBy: req.user.id
     });
 
     return res.status(201).json({
       success: true,
-      message: `Idea Lab attendance marked for ${regNumber.toUpperCase()}`,
+      message: `Idea Lab attendance marked for ${targetReg.toUpperCase()}`,
       record
     });
   } catch (error) {
