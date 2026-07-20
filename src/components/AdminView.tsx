@@ -59,9 +59,26 @@ export const AdminView: React.FC = () => {
 
   // Batch Attendance Modal (Step 2)
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
-  const [batchSlot, setBatchSlot] = useState('08:00 - 09:00');
+  const [selectedBatchSlots, setSelectedBatchSlots] = useState<string[]>(['08:00 - 09:00']);
   const [batchReason, setBatchReason] = useState('Idea Lab Work');
   const [markingBatch, setMarkingBatch] = useState(false);
+
+  const handleToggleBatchSlot = (slotLabel: string) => {
+    setSelectedBatchSlots(prev => 
+      prev.includes(slotLabel)
+        ? (prev.length > 1 ? prev.filter(s => s !== slotLabel) : prev)
+        : [...prev, slotLabel]
+    );
+  };
+
+  const handleSelectAllBatchSlots = () => {
+    const allSlotLabels = TIME_SLOTS.filter(s => !s.isLunch).map(s => `${s.startTime} - ${s.endTime}`);
+    if (selectedBatchSlots.length === allSlotLabels.length) {
+      setSelectedBatchSlots([allSlotLabels[0]]);
+    } else {
+      setSelectedBatchSlots(allSlotLabels);
+    }
+  };
 
   // Single student action status
   const [ideaLabStatusMsg, setIdeaLabStatusMsg] = useState('');
@@ -342,7 +359,7 @@ export const AdminView: React.FC = () => {
 
   // Execute batch attendance marking (Step 2 Submit)
   const handleExecuteBatchAttendance = async () => {
-    if (!token || selectedStudentRegs.length === 0) return;
+    if (!token || selectedStudentRegs.length === 0 || selectedBatchSlots.length === 0) return;
     setMarkingBatch(true);
 
     try {
@@ -354,7 +371,7 @@ export const AdminView: React.FC = () => {
         },
         body: JSON.stringify({
           regNumbers: selectedStudentRegs,
-          slot: batchSlot,
+          slots: selectedBatchSlots,
           reason: batchReason
         })
       });
@@ -909,20 +926,41 @@ export const AdminView: React.FC = () => {
                 {/* Slot & Details Selection */}
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs font-semibold mb-1 text-campus-secondary-light dark:text-campus-secondary-dark uppercase tracking-wider">
-                      Select Time Slot *
-                    </label>
-                    <select
-                      value={batchSlot}
-                      onChange={(e) => setBatchSlot(e.target.value)}
-                      className="w-full px-3 py-2 bg-campus-bg-light dark:bg-campus-bg-dark border border-campus-border-light dark:border-campus-border-dark rounded-lg text-xs font-medium focus:outline-none"
-                    >
-                      {TIME_SLOTS.map(slot => (
-                        <option key={slot.id} value={`${slot.startTime} - ${slot.endTime}`}>
-                          {slot.startTime} - {slot.endTime} {slot.isLunch ? '(Lunch Break)' : ''}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-xs font-semibold text-campus-secondary-light dark:text-campus-secondary-dark uppercase tracking-wider">
+                        Select Time Slots ({selectedBatchSlots.length} Selected) *
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleSelectAllBatchSlots}
+                        className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline"
+                      >
+                        {selectedBatchSlots.length === TIME_SLOTS.filter(s => !s.isLunch).length ? 'Deselect All' : 'Select All Slots'}
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1">
+                      {TIME_SLOTS.filter(s => !s.isLunch).map((slot) => {
+                        const slotLabel = `${slot.startTime} - ${slot.endTime}`;
+                        const isSelected = selectedBatchSlots.includes(slotLabel);
+
+                        return (
+                          <button
+                            key={slot.id}
+                            type="button"
+                            onClick={() => handleToggleBatchSlot(slotLabel)}
+                            className={`p-2.5 rounded-xl border text-left flex items-center justify-between transition-all ${
+                              isSelected
+                                ? 'bg-blue-600 text-white border-blue-600 font-bold shadow-soft-sm'
+                                : 'bg-campus-bg-light dark:bg-campus-bg-dark border-campus-border-light dark:border-campus-border-dark text-campus-secondary-light dark:text-campus-secondary-dark hover:border-black/30 dark:hover:border-white/30'
+                            }`}
+                          >
+                            <span className="text-xs font-mono">{slotLabel}</span>
+                            {isSelected ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5 opacity-50" />}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   <div>

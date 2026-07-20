@@ -426,49 +426,81 @@ export const getIdeaLabReports = async () => {
     records = memoryStore.ideaLabAttendance;
   }
 
-  const seenKeys = new Set();
-  const formattedReport = [];
+  // Group records by Reg No + Date (1 single row per student per date)
+  const grouped = new Map();
 
   for (const r of records) {
     const dt = new Date(r.date || r.createdAt);
     const dateFormatted = `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
-    const slotLabel = r.slot || r.lectureTime || r.subject || 'Slot 1';
-    const uniqueKey = `${r.regNumber}_${dateFormatted}_${slotLabel}`;
+    const studentReg = r.regNumber || 'N/A';
+    const groupKey = `${studentReg}_${dateFormatted}`;
 
-    if (!seenKeys.has(uniqueKey)) {
-      seenKeys.add(uniqueKey);
-      formattedReport.push({
-        Name: r.studentName || 'N/A',
-        'Reg No': r.regNumber || 'N/A',
-        Date: dateFormatted,
-        'Time Slot': slotLabel
+    if (!grouped.has(groupKey)) {
+      grouped.set(groupKey, {
+        name: r.studentName || 'N/A',
+        regNo: studentReg,
+        date: dateFormatted,
+        slots: new Set()
       });
     }
+
+    const slotLabel = r.slot || r.lectureTime || r.subject || 'Slot 1';
+    grouped.get(groupKey).slots.add(slotLabel);
   }
+
+  let maxSlots = 0;
+  grouped.forEach(item => {
+    if (item.slots.size > maxSlots) {
+      maxSlots = item.slots.size;
+    }
+  });
+
+  const formattedReport = [];
+  grouped.forEach(item => {
+    const row = {
+      Name: item.name,
+      'Reg No': item.regNo,
+      Date: item.date
+    };
+
+    const slotArray = Array.from(item.slots);
+    for (let i = 0; i < Math.max(maxSlots, 1); i++) {
+      const colName = `Time Slot ${i + 1}`;
+      row[colName] = slotArray[i] || '-';
+    }
+
+    formattedReport.push(row);
+  });
 
   return formattedReport;
 };
 
-export const batchMarkIdeaLabAttendance = async ({ regNumbers, reason, subject, teacher, room, slot, markedBy }) => {
+export const batchMarkIdeaLabAttendance = async ({ regNumbers, reason, subject, teacher, room, slots, slot, markedBy }) => {
   if (!Array.isArray(regNumbers) || regNumbers.length === 0) {
     throw new Error('At least one student registration number is required.');
   }
 
+  const slotList = Array.isArray(slots) && slots.length > 0 
+    ? slots 
+    : [slot || '08:00 - 09:00'];
+
   const results = [];
   for (const reg of regNumbers) {
-    try {
-      const rec = await markIdeaLabAttendance({
-        regNumber: reg,
-        reason,
-        subject: subject || 'Idea Lab Work',
-        teacher,
-        room,
-        slot,
-        markedBy
-      });
-      results.push(rec);
-    } catch (e) {
-      console.warn(`Failed to mark attendance for ${reg}:`, e.message);
+    for (const currentSlot of slotList) {
+      try {
+        const rec = await markIdeaLabAttendance({
+          regNumber: reg,
+          reason,
+          subject: subject || 'Idea Lab Work',
+          teacher,
+          room,
+          slot: currentSlot,
+          markedBy
+        });
+        results.push(rec);
+      } catch (e) {
+        console.warn(`Failed to mark attendance for ${reg} slot ${currentSlot}:`, e.message);
+      }
     }
   }
 

@@ -134,7 +134,7 @@ router.post(['/attendance', '/idealab/mark'], async (req, res, next) => {
 // POST /api/admin/idealab/batch-mark
 router.post('/idealab/batch-mark', async (req, res, next) => {
   try {
-    const { regNumbers, reason, subject, teacher, room, slot } = req.body;
+    const { regNumbers, reason, subject, teacher, room, slots, slot } = req.body;
 
     if (!Array.isArray(regNumbers) || regNumbers.length === 0) {
       return res.status(400).json({ success: false, message: 'Please select at least one student.' });
@@ -146,13 +146,14 @@ router.post('/idealab/batch-mark', async (req, res, next) => {
       subject,
       teacher,
       room,
-      slot: slot || 'Slot 1',
+      slots: slots || (slot ? [slot] : ['08:00 - 09:00']),
+      slot,
       markedBy: req.user.id
     });
 
     return res.status(201).json({
       success: true,
-      message: `Idea Lab attendance marked for ${result.count} student(s).`,
+      message: `Idea Lab attendance marked for ${result.count} record(s).`,
       count: result.count
     });
   } catch (error) {
