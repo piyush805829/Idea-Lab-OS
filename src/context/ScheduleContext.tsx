@@ -119,7 +119,9 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const saveSessionToStorage = (newToken: string | null, newProfile?: UserProfile | null, newTimetable?: TimetableData) => {
-    setToken(newToken);
+    if (token !== newToken) {
+      setToken(newToken);
+    }
     if (newToken) {
       localStorage.setItem('campusos-token', newToken);
       localStorage.setItem('idealab_token', newToken);
@@ -163,7 +165,7 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Load student data silently from backend on mount
   const loadBackendData = useCallback(async () => {
-    const activeToken = token || getStoredToken();
+    const activeToken = getStoredToken();
 
     if (!activeToken) {
       setIsAuthModalOpen(true);
@@ -217,7 +219,6 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             timetable
           }));
 
-          // Cache verified session to storage
           saveSessionToStorage(activeToken, profile, timetable);
           setIsAuthModalOpen(false);
           return;
@@ -225,16 +226,15 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     } catch (e) {
       console.warn('Operating on cached local session');
-      // If we have cached profile, keep modal hidden
       if (getStoredProfile()) {
         setIsAuthModalOpen(false);
       }
     }
-  }, [token]);
+  }, []);
 
   // Fetch incoming shared timetables
   const refreshIncomingShared = useCallback(async () => {
-    const activeToken = token || getStoredToken();
+    const activeToken = getStoredToken();
     if (!activeToken) return;
 
     try {
@@ -248,12 +248,13 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch (e) {
       console.error('Failed to fetch shared schedules:', e);
     }
-  }, [token]);
+  }, []);
 
+  // Run ONCE on mount to prevent infinite re-fetch loop and 429 Too Many Requests errors
   useEffect(() => {
     loadBackendData();
     refreshIncomingShared();
-  }, [loadBackendData, refreshIncomingShared]);
+  }, []);
 
   // Auth: Login
   const login = async (identifier: string, password: string): Promise<AuthResponse> => {
