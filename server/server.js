@@ -47,42 +47,26 @@ app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/signup', authLimiter);
 app.use('/api/', apiLimiter);
 
-// Seed Default Accounts into MongoDB Atlas
+// Seed Default Admin Account into MongoDB Atlas
 const seedTestingAccounts = async () => {
   await initMemoryDb();
 
   if (mongoose.connection.readyState === 1) {
     try {
-      // Seed Admin Account (ADMIN001 / admin123)
-      const adminExists = await User.findOne({ registrationNumber: 'ADMIN001' });
+      // Seed Admin Account (Idealab2026 / Idealab8058)
+      const adminExists = await User.findOne({ registrationNumber: 'IDEALAB2026' });
       if (!adminExists) {
-        const hashedPassword = await bcrypt.hash('admin123', 10);
+        const hashedPassword = await bcrypt.hash('Idealab8058', 10);
         await User.create({
-          fullName: 'System Administrator',
-          registrationNumber: 'ADMIN001',
+          fullName: 'Idea Lab Administrator',
+          registrationNumber: 'IDEALAB2026',
           password: hashedPassword,
           role: 'admin',
-          branch: 'CSE',
-          section: 'A',
-          batch: '1'
+          branch: 'ADMIN',
+          section: 'ADMIN',
+          batch: 'ADMIN'
         });
-        console.log('✓ Default Admin Account (ADMIN001) initialized.');
-      }
-
-      // Seed Student Account (PCEA25CS123 / student123)
-      const studentExists = await User.findOne({ registrationNumber: 'PCEA25CS123' });
-      if (!studentExists) {
-        const hashedPassword = await bcrypt.hash('student123', 10);
-        await User.create({
-          fullName: 'Piyush',
-          registrationNumber: 'PCEA25CS123',
-          password: hashedPassword,
-          role: 'student',
-          branch: 'CSE',
-          section: 'B',
-          batch: '2'
-        });
-        console.log('✓ Default Student Account (PCEA25CS123) initialized.');
+        console.log('✓ Default Admin Account (Idealab2026) initialized.');
       }
     } catch (err) {
       console.warn('[SEED WARNING]', err.message);

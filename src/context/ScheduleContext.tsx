@@ -56,32 +56,11 @@ interface ScheduleContextType {
 
 const ScheduleContext = createContext<ScheduleContextType | undefined>(undefined);
 
-const defaultTimetable: TimetableData = {
-  'Monday-1': { subject: 'DSA', teacher: 'Dr. Alan', room: 'CS-101', importance: 'important', type: 'lecture' },
-  'Monday-2': { subject: 'DBMS', teacher: 'Dr. Grace', room: 'CS-202', importance: 'can_skip', type: 'lecture' },
-  'Tuesday-1': { subject: 'UI/UX Lab', teacher: 'Prof. Dieter', room: 'Design-Lab', importance: 'can_skip', type: 'lab' },
-  'Tuesday-2': { subject: 'DSA', teacher: 'Dr. Alan', room: 'CS-101', importance: 'important', type: 'lecture' },
-  'Wednesday-3': { subject: 'DE', teacher: 'Dr. Claude', room: 'EC-304', importance: 'important', type: 'lecture' },
-  'Wednesday-5': { subject: 'DSA', teacher: 'Dr. Alan', room: 'CS-101', importance: 'important', type: 'lecture' },
-  'Thursday-2': { subject: 'DBMS Lab', teacher: 'Dr. Grace', room: 'CS-205', importance: 'can_skip', type: 'lab' },
-  'Thursday-6': { subject: 'DE', teacher: 'Dr. Claude', room: 'EC-304', importance: 'important', type: 'lecture' },
-  'Friday-1': { subject: 'DBMS', teacher: 'Dr. Grace', room: 'CS-202', importance: 'can_skip', type: 'lecture' },
-  'Friday-3': { subject: 'UI/UX', teacher: 'Prof. Dieter', room: 'Design-Lab', importance: 'can_skip', type: 'lecture' },
-  'Friday-6': { subject: 'DE Lab', teacher: 'Dr. Claude', room: 'EC-302', importance: 'important', type: 'lab' },
-};
+const defaultTimetable: TimetableData = {};
 
-const defaultLabs: Record<string, LabRecordSimple> = {
-  'UI/UX Lab': { recordNumber: 2, topic: 'Figma Interactive Prototyping', status: 'pending', notes: 'Due coming Wednesday. Setup auto transitions.' },
-  'DBMS Lab': { recordNumber: 4, topic: 'Relational Algebra & Subqueries', status: 'completed', notes: 'Checked and signed off by Dr. Grace.' },
-  'DE Lab': { recordNumber: 1, topic: 'Combinational Adders & Subtractors', status: 'completed', notes: 'Verified output waveforms.' },
-};
+const defaultLabs: Record<string, LabRecordSimple> = {};
 
-const defaultAttendance: Record<string, AttendanceSimple> = {
-  'DSA': { present: 14, absent: 1 },
-  'DBMS': { present: 8, absent: 3 },
-  'UI/UX': { present: 12, absent: 0 },
-  'DE': { present: 10, absent: 2 },
-};
+const defaultAttendance: Record<string, AttendanceSimple> = {};
 
 export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Only token & theme stored in localStorage
@@ -252,7 +231,7 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return { success: true, message: 'Login successful' };
     }
 
-    if ((cleanId === 'ADMIN001' || cleanName === 'system administrator') && password === 'admin123') {
+    if ((cleanId === 'IDEALAB2026' || cleanName === 'idealab2026' || cleanName === 'idea lab administrator') && password === 'Idealab8058') {
       const dummyToken = 'mock_admin_jwt_token';
       setToken(dummyToken);
       localStorage.setItem('campusos-token', dummyToken);
@@ -260,8 +239,8 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         ...prev,
         profile: {
           id: 'admin_id_001',
-          fullName: 'System Administrator',
-          regNumber: 'ADMIN001',
+          fullName: 'Idea Lab Administrator',
+          regNumber: 'IDEALAB2026',
           role: 'admin',
           section: 'ADMIN',
           batch: 'ADMIN',

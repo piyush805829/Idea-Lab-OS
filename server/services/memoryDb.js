@@ -19,14 +19,13 @@ const memoryStore = {
 // Seed testing accounts in memory
 export const initMemoryDb = async () => {
   if (memoryStore.userList.length === 0) {
-    const adminPass = await bcrypt.hash('admin123', 10);
-    const studentPass = await bcrypt.hash('student123', 10);
+    const adminPass = await bcrypt.hash('Idealab8058', 10);
 
     const adminUser = {
       _id: 'admin_id_001',
-      fullName: 'System Administrator',
-      regNumber: 'ADMIN001',
-      registrationNumber: 'ADMIN001',
+      fullName: 'Idea Lab Administrator',
+      regNumber: 'IDEALAB2026',
+      registrationNumber: 'IDEALAB2026',
       password: adminPass,
       role: 'admin',
       section: 'ADMIN',
@@ -35,33 +34,15 @@ export const initMemoryDb = async () => {
       lastActive: new Date()
     };
 
-    const studentUser = {
-      _id: 'student_id_001',
-      fullName: 'Piyush',
-      regNumber: 'PCEA25CS123',
-      registrationNumber: 'PCEA25CS123',
-      password: studentPass,
-      role: 'student',
-      section: 'B',
-      batch: '2',
-      branch: 'CSE',
-      lastActive: new Date()
-    };
-
-    memoryStore.users['ADMIN001'] = adminUser;
-    memoryStore.users['PCEA25CS123'] = studentUser;
-    memoryStore.userList.push(adminUser, studentUser);
+    memoryStore.users['IDEALAB2026'] = adminUser;
+    memoryStore.userList.push(adminUser);
 
     memoryStore.timetables['admin_id_001'] = { monday: {}, tuesday: {}, wednesday: {}, thursday: {}, friday: {} };
-    memoryStore.timetables['student_id_001'] = { monday: {}, tuesday: {}, wednesday: {}, thursday: {}, friday: {} };
     memoryStore.schedules['admin_id_001'] = {};
-    memoryStore.schedules['student_id_001'] = {};
     memoryStore.labs['admin_id_001'] = {};
-    memoryStore.labs['student_id_001'] = {};
     memoryStore.attendance['admin_id_001'] = {};
-    memoryStore.attendance['student_id_001'] = {};
 
-    console.log('Fast In-Memory Database initialized with test accounts: ADMIN001 & PCEA25CS123');
+    console.log('Fast In-Memory Database initialized with Admin account: Idealab2026');
   }
 };
 
