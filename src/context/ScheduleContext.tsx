@@ -62,27 +62,52 @@ const defaultTimetable: TimetableData = {};
 const defaultLabs: Record<string, LabRecordSimple> = {};
 const defaultAttendance: Record<string, AttendanceSimple> = {};
 
-export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Read token from localStorage on initial mount
-  const getStoredToken = () => 
-    localStorage.getItem('campusos-token') || 
-    localStorage.getItem('idealab_token') || 
-    localStorage.getItem('campusos_token');
+// LocalStorage session helpers
+const getStoredToken = () => 
+  localStorage.getItem('campusos-token') || 
+  localStorage.getItem('idealab_token') || 
+  localStorage.getItem('campusos_token');
 
+const getStoredProfile = (): UserProfile | null => {
+  try {
+    const raw = localStorage.getItem('campusos_user_profile') || localStorage.getItem('idealab_user_profile');
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+};
+
+const getStoredTimetable = (): TimetableData => {
+  try {
+    const raw = localStorage.getItem('campusos_user_timetable');
+    return raw ? JSON.parse(raw) : defaultTimetable;
+  } catch (e) {
+    return defaultTimetable;
+  }
+};
+
+export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [token, setToken] = useState<string | null>(getStoredToken);
   const [theme, setThemeState] = useState<Theme>(() => (localStorage.getItem('campusos-theme') as Theme) || 'light');
   
-  const [data, setData] = useState<CampusOSData>({
-    profile: null,
-    timetable: defaultTimetable,
+  // Initialize state INSTANTLY from localStorage to prevent zero-second window flashes
+  const [data, setData] = useState<CampusOSData>(() => ({
+    profile: getStoredProfile(),
+    timetable: getStoredTimetable(),
     labs: defaultLabs,
     attendance: defaultAttendance,
-    theme: theme
-  });
+    theme: (localStorage.getItem('campusos-theme') as Theme) || 'light'
+  }));
 
   const [saveStatus, setSaveStatus] = useState<'saving' | 'saved'>('saved');
-  // Don't show login modal immediately if stored token exists (prevents 1 second login window flash on refresh)
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(() => !getStoredToken());
+
+  // Prevent login window from appearing if stored session exists
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(() => {
+    const activeToken = getStoredToken();
+    const activeProfile = getStoredProfile();
+    return !(activeToken && activeProfile);
+  });
+
   const [incomingShared, setIncomingShared] = useState<SharedScheduleItem[]>([]);
   const [notifications] = useState<NotificationItem[]>([]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -93,16 +118,27 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     timerRef.current = setTimeout(() => setSaveStatus('saved'), 600);
   };
 
-  const saveTokenToStorage = (newToken: string | null) => {
+  const saveSessionToStorage = (newToken: string | null, newProfile?: UserProfile | null, newTimetable?: TimetableData) => {
     setToken(newToken);
     if (newToken) {
       localStorage.setItem('campusos-token', newToken);
       localStorage.setItem('idealab_token', newToken);
       localStorage.setItem('campusos_token', newToken);
+
+      if (newProfile) {
+        localStorage.setItem('campusos_user_profile', JSON.stringify(newProfile));
+        localStorage.setItem('idealab_user_profile', JSON.stringify(newProfile));
+      }
+      if (newTimetable) {
+        localStorage.setItem('campusos_user_timetable', JSON.stringify(newTimetable));
+      }
     } else {
       localStorage.removeItem('campusos-token');
       localStorage.removeItem('idealab_token');
       localStorage.removeItem('campusos_token');
+      localStorage.removeItem('campusos_user_profile');
+      localStorage.removeItem('idealab_user_profile');
+      localStorage.removeItem('campusos_user_timetable');
     }
   };
 
@@ -125,7 +161,7 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [theme]);
 
-  // Load student data from backend if token is saved
+  // Load student data silently from backend on mount
   const loadBackendData = useCallback(async () => {
     const activeToken = token || getStoredToken();
 
@@ -144,7 +180,7 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       });
 
       if (meRes.status === 401 || meRes.status === 403) {
-        saveTokenToStorage(null);
+        saveSessionToStorage(null);
         setIsAuthModalOpen(true);
         return;
       }
@@ -164,7 +200,7 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           };
 
           // 2. Fetch User Timetable from MongoDB Atlas
-          let timetable: TimetableData = {};
+          let timetable: TimetableData = getStoredTimetable();
           try {
             const ttRes = await fetch(`${API_BASE}/timetable`, {
               headers: { Authorization: `Bearer ${activeToken}` }
@@ -181,13 +217,18 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             timetable
           }));
 
-          // Ensure auth modal remains hidden for active session
+          // Cache verified session to storage
+          saveSessionToStorage(activeToken, profile, timetable);
           setIsAuthModalOpen(false);
           return;
         }
       }
     } catch (e) {
-      console.warn('Backend unavailable, operating on local session');
+      console.warn('Operating on cached local session');
+      // If we have cached profile, keep modal hidden
+      if (getStoredProfile()) {
+        setIsAuthModalOpen(false);
+      }
     }
   }, [token]);
 
@@ -232,22 +273,24 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       const json = await res.json();
       if (res.ok && json.token) {
-        saveTokenToStorage(json.token);
-
         const user = json.user;
+        let profile: UserProfile | null = null;
         if (user) {
-          setData(prev => ({
-            ...prev,
-            profile: {
-              id: user.id || user._id,
-              fullName: user.fullName,
-              regNumber: user.registrationNumber || user.regNumber,
-              role: user.role,
-              section: user.section || 'A',
-              batch: user.batch || '1',
-              branch: user.branch || 'CSE'
-            }
-          }));
+          profile = {
+            id: user.id || user._id,
+            fullName: user.fullName,
+            regNumber: user.registrationNumber || user.regNumber,
+            role: user.role,
+            section: user.section || 'A',
+            batch: user.batch || '1',
+            branch: user.branch || 'CSE'
+          };
+        }
+
+        saveSessionToStorage(json.token, profile);
+
+        if (profile) {
+          setData(prev => ({ ...prev, profile }));
         }
 
         setIsAuthModalOpen(false);
@@ -263,19 +306,18 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Client-side fallback check for Admin
     if ((cleanId.toUpperCase() === 'IDEALAB2026' || cleanId.toLowerCase() === 'idea lab administrator') && password === 'Idealab8058') {
       const dummyToken = 'mock_admin_jwt_token';
-      saveTokenToStorage(dummyToken);
-      setData(prev => ({
-        ...prev,
-        profile: {
-          id: 'admin_id_001',
-          fullName: 'Idea Lab Administrator',
-          regNumber: 'IDEALAB2026',
-          role: 'admin',
-          section: 'ADMIN',
-          batch: 'ADMIN',
-          branch: 'ADMIN'
-        }
-      }));
+      const adminProfile: UserProfile = {
+        id: 'admin_id_001',
+        fullName: 'Idea Lab Administrator',
+        regNumber: 'IDEALAB2026',
+        role: 'admin',
+        section: 'ADMIN',
+        batch: 'ADMIN',
+        branch: 'ADMIN'
+      };
+
+      saveSessionToStorage(dummyToken, adminProfile);
+      setData(prev => ({ ...prev, profile: adminProfile }));
       setIsAuthModalOpen(false);
       return { success: true, message: 'Login successful' };
     }
@@ -301,24 +343,27 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       const json = await res.json();
       if (res.ok && json.token) {
-        saveTokenToStorage(json.token);
-
         const user = json.user;
+        let profile: UserProfile | null = null;
         if (user) {
-          setData(prev => ({
-            ...prev,
-            profile: {
-              id: user.id || user._id,
-              fullName: user.fullName,
-              regNumber: user.registrationNumber || user.regNumber,
-              role: user.role,
-              section: user.section || 'A',
-              batch: user.batch || '1',
-              branch: user.branch || 'CSE'
-            },
-            timetable: {}
-          }));
+          profile = {
+            id: user.id || user._id,
+            fullName: user.fullName,
+            regNumber: user.registrationNumber || user.regNumber,
+            role: user.role,
+            section: user.section || 'A',
+            batch: user.batch || '1',
+            branch: user.branch || 'CSE'
+          };
         }
+
+        saveSessionToStorage(json.token, profile, {});
+
+        setData(prev => ({
+          ...prev,
+          profile,
+          timetable: {}
+        }));
 
         setIsAuthModalOpen(false);
         await loadBackendData();
@@ -332,7 +377,7 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const logout = () => {
-    saveTokenToStorage(null);
+    saveSessionToStorage(null);
     setData({
       profile: null,
       timetable: defaultTimetable,
@@ -347,6 +392,7 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const updateProfile = async (profile: UserProfile | null) => {
     if (!profile) return;
     setData(prev => ({ ...prev, profile }));
+    saveSessionToStorage(token, profile);
   };
 
   // Save / Modify Class & Persist to MongoDB Atlas Database
@@ -362,6 +408,7 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
     
     setData(prev => ({ ...prev, timetable: newTimetable }));
+    saveSessionToStorage(token, data.profile, newTimetable);
 
     const activeToken = token || getStoredToken();
     if (activeToken) {
@@ -482,6 +529,7 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }));
 
         markSaving();
+        saveSessionToStorage(token, data.profile, newTimetable);
 
         const activeToken = token || getStoredToken();
         if (activeToken) {
@@ -519,6 +567,7 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       attendance: {}
     }));
     markSaving();
+    saveSessionToStorage(token, data.profile, {});
 
     const activeToken = token || getStoredToken();
     if (activeToken) {
