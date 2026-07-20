@@ -10,6 +10,7 @@ import {
   FileSpreadsheet, 
   ShieldCheck, 
   CheckCircle2, 
+  XCircle,
   AlertCircle, 
   Activity, 
   Layers, 
@@ -20,6 +21,7 @@ import type { AdminDashboardStats, UserProfile, TimetableData, AuditLogItem, Tim
 import { ReadOnlyStudentViewModal } from './ReadOnlyStudentViewModal';
 import { adminService } from '../services/adminService';
 import { getApiBaseUrl } from '../utils/api';
+import { TIME_SLOTS, getDayName } from '../utils/timeUtils';
 
 export const AdminView: React.FC = () => {
   const { token } = useSchedule();
@@ -44,7 +46,9 @@ export const AdminView: React.FC = () => {
   const [ideaLabSearchResult, setIdeaLabSearchResult] = useState<{
     student: UserProfile;
     timetable: TimetableData;
+    markedSlots?: string[];
   } | null>(null);
+  const [markedSlots, setMarkedSlots] = useState<string[]>([]);
   const [ideaLabReason, setIdeaLabReason] = useState('Idea Lab Work');
   const [markingAttendance, setMarkingAttendance] = useState(false);
   const [ideaLabStatusMsg, setIdeaLabStatusMsg] = useState('');
@@ -63,6 +67,17 @@ export const AdminView: React.FC = () => {
 
   // Audit logs state
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
+
+  // Format slot key ("Monday-1") to human readable time range ("08:00 - 09:00")
+  const formatSlotLabel = (slotKey: string) => {
+    const parts = slotKey.split('-');
+    const slotId = parts[1] || slotKey;
+    const slotObj = TIME_SLOTS.find(s => s.id === slotId);
+    return slotObj ? `${slotObj.startTime} - ${slotObj.endTime}` : `Slot ${slotId}`;
+  };
+
+  const todayDayName = getDayName(new Date()) || 'Monday';
+  const todayDateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
 
   // Fetch admin stats
   const fetchStats = async () => {
@@ -175,6 +190,7 @@ export const AdminView: React.FC = () => {
     e.preventDefault();
     setIdeaLabStatusMsg('');
     setIdeaLabSearchResult(null);
+    setMarkedSlots([]);
     if (!ideaLabRegInput.trim()) return;
 
     setSearchingIdeaLab(true);
@@ -185,11 +201,12 @@ export const AdminView: React.FC = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ regNumber: ideaLabRegInput.trim() })
+        body: JSON.stringify({ regNumber: ideaLabRegInput.trim(), query: ideaLabRegInput.trim() })
       });
       const data = await res.json();
       if (res.ok) {
         setIdeaLabSearchResult(data);
+        setMarkedSlots(data.markedSlots || []);
       } else {
         setIdeaLabStatusMsg(data.message || 'Student not found.');
       }
@@ -201,7 +218,7 @@ export const AdminView: React.FC = () => {
   };
 
   // Mark Idea Lab Present
-  const handleMarkIdeaLabPresent = async (subjectMissed: string, teacher: string, room: string, timeStr: string) => {
+  const handleMarkIdeaLabPresent = async (subjectMissed: string, teacher: string, room: string, slotKey: string, timeLabel: string) => {
     if (!ideaLabSearchResult || !token) return;
     setMarkingAttendance(true);
     setIdeaLabStatusMsg('');
@@ -222,7 +239,8 @@ export const AdminView: React.FC = () => {
           subjectMissed,
           teacher,
           room,
-          lectureTime: timeStr,
+          slot: timeLabel,
+          lectureTime: timeLabel,
           reason: ideaLabReason
         })
       });
@@ -230,7 +248,8 @@ export const AdminView: React.FC = () => {
       const data = await res.json();
       if (res.ok) {
         setIdeaLabStatusMsg(data.message);
-        fetchStats(); // Refresh stats
+        setMarkedSlots(prev => Array.from(new Set([...prev, slotKey, timeLabel])));
+        fetchStats();
       } else {
         setIdeaLabStatusMsg(data.message || 'Error marking attendance.');
       }
@@ -241,7 +260,43 @@ export const AdminView: React.FC = () => {
     }
   };
 
-  // Download Excel Report (Format: Name | Reg No | Date | Time Slot)
+  // Cancel Idea Lab Attendance
+  const handleCancelIdeaLabAttendance = async (subjectMissed: string, slotKey: string, timeLabel: string) => {
+    if (!ideaLabSearchResult || !token) return;
+    setMarkingAttendance(true);
+    setIdeaLabStatusMsg('');
+
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/admin/idealab/cancel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          regNumber: ideaLabSearchResult.student.regNumber,
+          slot: timeLabel,
+          subject: subjectMissed,
+          lectureTime: timeLabel
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setIdeaLabStatusMsg(data.message);
+        setMarkedSlots(prev => prev.filter(s => s !== slotKey && s !== timeLabel));
+        fetchStats();
+      } else {
+        setIdeaLabStatusMsg(data.message || 'Error cancelling attendance.');
+      }
+    } catch (e) {
+      setIdeaLabStatusMsg('Error cancelling attendance.');
+    } finally {
+      setMarkingAttendance(false);
+    }
+  };
+
+  // Download Excel Report (.xlsx)
   const handleDownloadExcel = async () => {
     try {
       await adminService.exportExcelReport();
@@ -526,32 +581,79 @@ export const AdminView: React.FC = () => {
                 </div>
 
                 <div>
-                  <h5 className="text-xs font-semibold text-campus-secondary-light dark:text-campus-secondary-dark uppercase tracking-wider mb-2">
-                    Student's Today Timetable & Classes
-                  </h5>
-                  {Object.keys(ideaLabSearchResult.timetable || {}).length === 0 ? (
-                    <p className="text-xs text-campus-secondary-light dark:text-campus-secondary-dark">No classes scheduled in timetable.</p>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                      {Object.entries(ideaLabSearchResult.timetable).map(([key, cls]: [string, any]) => (
-                        <div key={key} className="p-3 bg-white dark:bg-campus-card-dark rounded-xl border border-campus-border-light dark:border-campus-border-dark space-y-2">
-                          <div>
-                            <span className="text-[9px] font-mono font-bold text-campus-secondary-light dark:text-campus-secondary-dark uppercase block">{key}</span>
-                            <p className="text-xs font-bold truncate">{cls.subject}</p>
-                            <p className="text-[10px] text-campus-secondary-light dark:text-campus-secondary-dark">Teacher: {cls.teacher} • Room {cls.room}</p>
-                          </div>
-                          <button
-                            onClick={() => handleMarkIdeaLabPresent(cls.subject, cls.teacher, cls.room, key)}
-                            disabled={markingAttendance}
-                            className="w-full py-1.5 bg-black text-white dark:bg-white dark:text-black font-bold text-[11px] rounded-lg shadow-soft-sm hover:opacity-90 transition disabled:opacity-50 flex items-center justify-center gap-1"
-                          >
-                            <CheckCircle2 className="h-3 w-3" />
-                            Mark Present
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <div className="flex items-center justify-between mb-3">
+                    <h5 className="text-xs font-semibold text-campus-secondary-light dark:text-campus-secondary-dark uppercase tracking-wider">
+                      Today's Scheduled Classes ({todayDateStr})
+                    </h5>
+                    <span className="text-xs font-mono font-bold px-2.5 py-0.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-lg">
+                      {todayDayName}
+                    </span>
+                  </div>
+
+                  {(() => {
+                    const todayClasses = Object.entries(ideaLabSearchResult.timetable || {}).filter(([key]) => {
+                      const [day] = key.split('-');
+                      return day.toLowerCase() === todayDayName.toLowerCase();
+                    });
+
+                    const displayClasses = todayClasses.length > 0 ? todayClasses : Object.entries(ideaLabSearchResult.timetable || {});
+
+                    if (displayClasses.length === 0) {
+                      return (
+                        <p className="text-xs text-campus-secondary-light dark:text-campus-secondary-dark py-2">
+                          No classes scheduled in timetable for today ({todayDayName}).
+                        </p>
+                      );
+                    }
+
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                        {displayClasses.map(([key, cls]: [string, any]) => {
+                          const timeLabel = formatSlotLabel(key);
+                          const isMarked = markedSlots.includes(key) || markedSlots.includes(timeLabel);
+
+                          return (
+                            <div key={key} className="p-3 bg-white dark:bg-campus-card-dark rounded-xl border border-campus-border-light dark:border-campus-border-dark space-y-2">
+                              <div>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-mono font-bold text-campus-secondary-light dark:text-campus-secondary-dark uppercase block">
+                                    {timeLabel}
+                                  </span>
+                                  <span className="text-[9px] font-bold text-campus-secondary-light dark:text-campus-secondary-dark uppercase">
+                                    {key.split('-')[0]}
+                                  </span>
+                                </div>
+                                <p className="text-xs font-bold truncate mt-1">{cls.subject}</p>
+                                <p className="text-[10px] text-campus-secondary-light dark:text-campus-secondary-dark">
+                                  Teacher: {cls.teacher || 'N/A'} • Room {cls.room || 'N/A'}
+                                </p>
+                              </div>
+
+                              {isMarked ? (
+                                <button
+                                  onClick={() => handleCancelIdeaLabAttendance(cls.subject, key, timeLabel)}
+                                  disabled={markingAttendance}
+                                  className="w-full py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold text-[11px] rounded-lg shadow-soft-sm transition disabled:opacity-50 flex items-center justify-center gap-1"
+                                >
+                                  <XCircle className="h-3.5 w-3.5" />
+                                  Cancel Attendance
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleMarkIdeaLabPresent(cls.subject, cls.teacher, cls.room, key, timeLabel)}
+                                  disabled={markingAttendance}
+                                  className="w-full py-1.5 bg-black text-white dark:bg-white dark:text-black font-bold text-[11px] rounded-lg shadow-soft-sm hover:opacity-90 transition disabled:opacity-50 flex items-center justify-center gap-1"
+                                >
+                                  <CheckCircle2 className="h-3.5 w-3.5" />
+                                  Mark Present
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             )}

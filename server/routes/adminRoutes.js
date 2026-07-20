@@ -6,6 +6,7 @@ import {
   getStudentById, 
   searchStudentForIdeaLab,
   markIdeaLabAttendance, 
+  cancelIdeaLabAttendance,
   getIdeaLabReports 
 } from '../services/adminService.js';
 import AuditLog from '../models/AuditLog.js';
@@ -122,6 +123,31 @@ router.post(['/attendance', '/idealab/mark'], async (req, res, next) => {
       success: true,
       message: `Idea Lab attendance marked for ${targetReg.toUpperCase()}`,
       record
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/admin/idealab/cancel & /api/admin/attendance/cancel
+router.post(['/idealab/cancel', '/attendance/cancel'], async (req, res, next) => {
+  try {
+    const { regNumber, regNo, slot, subject, lectureTime } = req.body;
+    const targetReg = regNumber || regNo;
+
+    if (!targetReg) {
+      return res.status(400).json({ success: false, message: 'Registration number is required.' });
+    }
+
+    const result = await cancelIdeaLabAttendance({
+      regNumber: targetReg,
+      slot: slot || lectureTime,
+      subject
+    });
+
+    return res.json({
+      success: true,
+      message: result.message
     });
   } catch (error) {
     next(error);

@@ -94,6 +94,10 @@ export const searchStudentForIdeaLab = async (queryStr) => {
   if (!q) throw new Error('Search query is required.');
 
   const qUpper = q.toUpperCase();
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date();
+  endOfDay.setHours(23, 59, 59, 999);
 
   if (mongoose.connection.readyState === 1) {
     const students = await User.find({
@@ -122,6 +126,13 @@ export const searchStudentForIdeaLab = async (queryStr) => {
       });
     }
 
+    // Fetch today's marked attendance slots for this student
+    const markedRecords = await IdeaLabAttendance.find({
+      regNumber: student.registrationNumber,
+      date: { $gte: startOfDay, $lte: endOfDay }
+    });
+    const markedSlots = markedRecords.map(r => r.slot);
+
     const profile = {
       id: student._id,
       fullName: student.fullName,
@@ -135,6 +146,7 @@ export const searchStudentForIdeaLab = async (queryStr) => {
     return {
       student: profile,
       timetable,
+      markedSlots,
       matchingStudents: students.map(s => ({
         id: s._id,
         fullName: s.fullName,
@@ -164,6 +176,10 @@ export const searchStudentForIdeaLab = async (queryStr) => {
     if (memTt[d]) Object.assign(timetable, memTt[d]);
   });
 
+  const markedSlots = memoryStore.ideaLabAttendance
+    .filter(r => r.regNumber.toUpperCase() === student.registrationNumber.toUpperCase())
+    .map(r => r.slot);
+
   return {
     student: {
       id: student._id,
@@ -175,6 +191,7 @@ export const searchStudentForIdeaLab = async (queryStr) => {
       branch: student.branch || 'CSE'
     },
     timetable,
+    markedSlots,
     matchingStudents: matching.map(s => ({
       id: s._id,
       fullName: s.fullName,
@@ -188,6 +205,12 @@ export const searchStudentForIdeaLab = async (queryStr) => {
 export const markIdeaLabAttendance = async ({ regNumber, reason, subject, teacher, room, slot, markedBy }) => {
   const regUpper = (regNumber || '').trim().toUpperCase();
 
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const endOfDay = new Date();
+  endOfDay.setHours(23, 59, 59, 999);
+
   if (mongoose.connection.readyState === 1) {
     let student = await User.findOne({ registrationNumber: regUpper });
     if (!student) {
@@ -197,20 +220,35 @@ export const markIdeaLabAttendance = async ({ regNumber, reason, subject, teache
       throw new Error(`Student "${regNumber}" not found.`);
     }
 
-    const record = await IdeaLabAttendance.create({
-      studentId: student._id,
+    // Check if duplicate entry exists for same student + slot today
+    let record = await IdeaLabAttendance.findOne({
       regNumber: student.registrationNumber,
-      studentName: student.fullName,
-      section: student.section || 'A',
-      branch: student.branch || 'CSE',
-      date: new Date(),
-      reason: reason || 'Idea Lab Work',
-      subject: subject || 'General',
-      teacher: teacher || 'Instructor',
-      room: room || 'Idea Lab',
       slot: slot || 'Slot 1',
-      markedBy
+      date: { $gte: startOfDay, $lte: endOfDay }
     });
+
+    if (record) {
+      record.reason = reason || 'Idea Lab Work';
+      record.subject = subject || record.subject;
+      record.teacher = teacher || record.teacher;
+      record.room = room || record.room;
+      await record.save();
+    } else {
+      record = await IdeaLabAttendance.create({
+        studentId: student._id,
+        regNumber: student.registrationNumber,
+        studentName: student.fullName,
+        section: student.section || 'A',
+        branch: student.branch || 'CSE',
+        date: new Date(),
+        reason: reason || 'Idea Lab Work',
+        subject: subject || 'General',
+        teacher: teacher || 'Instructor',
+        room: room || 'Idea Lab',
+        slot: slot || 'Slot 1',
+        markedBy
+      });
+    }
 
     await AuditLog.create({
       action: 'MARKED_IDEALAB_ATTENDANCE',
@@ -227,6 +265,10 @@ export const markIdeaLabAttendance = async ({ regNumber, reason, subject, teache
   if (!student) {
     throw new Error(`Student "${regNumber}" not found.`);
   }
+
+  memoryStore.ideaLabAttendance = memoryStore.ideaLabAttendance.filter(
+    r => !(r.regNumber.toUpperCase() === student.registrationNumber.toUpperCase() && r.slot === slot)
+  );
 
   const record = {
     _id: 'idealab_' + Date.now(),
@@ -248,6 +290,45 @@ export const markIdeaLabAttendance = async ({ regNumber, reason, subject, teache
   return record;
 };
 
+export const cancelIdeaLabAttendance = async ({ regNumber, slot, subject }) => {
+  const regUpper = (regNumber || '').trim().toUpperCase();
+
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const endOfDay = new Date();
+  endOfDay.setHours(23, 59, 59, 999);
+
+  if (mongoose.connection.readyState === 1) {
+    let student = await User.findOne({ registrationNumber: regUpper });
+    if (!student) {
+      student = await User.findOne({ fullName: new RegExp(regNumber, 'i') });
+    }
+    const targetReg = student ? student.registrationNumber : regUpper;
+
+    await IdeaLabAttendance.deleteMany({
+      regNumber: targetReg,
+      slot: slot || 'Slot 1',
+      date: { $gte: startOfDay, $lte: endOfDay }
+    });
+
+    await AuditLog.create({
+      action: 'CANCELLED_IDEALAB_ATTENDANCE',
+      performedBy: 'Admin',
+      targetUser: targetReg,
+      details: `Cancelled Idea Lab attendance for ${targetReg} (${slot || subject})`
+    }).catch(() => {});
+
+    return { success: true, message: `Attendance cancelled for ${targetReg}` };
+  }
+
+  // Memory DB Fallback
+  memoryStore.ideaLabAttendance = memoryStore.ideaLabAttendance.filter(
+    r => !(r.regNumber.toUpperCase() === regUpper && r.slot === slot)
+  );
+  return { success: true, message: `Attendance cancelled for ${regUpper}` };
+};
+
 export const getIdeaLabReports = async () => {
   let records = [];
 
@@ -257,17 +338,26 @@ export const getIdeaLabReports = async () => {
     records = memoryStore.ideaLabAttendance;
   }
 
-  const formattedReport = records.map((r) => {
+  // Deduplicate records by Reg No + Date + Time Slot
+  const seenKeys = new Set();
+  const formattedReport = [];
+
+  for (const r of records) {
     const dt = new Date(r.date || r.createdAt);
     const dateFormatted = `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
+    const slotLabel = r.slot || r.subject || 'Slot 1';
+    const uniqueKey = `${r.regNumber}_${dateFormatted}_${slotLabel}`;
 
-    return {
-      Name: r.studentName || 'N/A',
-      'Reg No': r.regNumber || 'N/A',
-      Date: dateFormatted,
-      'Time Slot': r.slot || r.subject || 'Slot 1'
-    };
-  });
+    if (!seenKeys.has(uniqueKey)) {
+      seenKeys.add(uniqueKey);
+      formattedReport.push({
+        Name: r.studentName || 'N/A',
+        'Reg No': r.regNumber || 'N/A',
+        Date: dateFormatted,
+        'Time Slot': slotLabel
+      });
+    }
+  }
 
   return formattedReport;
 };
