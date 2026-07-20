@@ -34,7 +34,7 @@ export const adminService = {
     return response.data;
   },
 
-  // Formats and downloads Excel file with exact 4 columns: Name | Reg No | Date | Time Slot
+  // Formats and downloads Excel file with dynamic multi-slot columns per student row
   async exportExcelReport(reportData?: any[]) {
     let records = reportData;
     if (!records) {
@@ -43,15 +43,11 @@ export const adminService = {
     }
 
     const list = records || [];
-    // Ensure strict 4-column format: Name | Reg No | Date | Time Slot
-    const formattedData = list.map((r: any) => ({
-      'Name': r['Name'] || r.studentName || r.fullName || 'N/A',
-      'Reg No': r['Reg No'] || r.regNumber || r.registrationNumber || 'N/A',
-      'Date': r['Date'] || (r.date ? new Date(r.date).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB')),
-      'Time Slot': r['Time Slot'] || r.slot || r.subject || 'Slot 1'
-    }));
+    const formattedList = list.length > 0 ? list : [
+      { 'Name': 'N/A', 'Reg No': 'N/A', 'Date': new Date().toLocaleDateString('en-GB'), 'Time Slot 1': '-' }
+    ];
 
-    const worksheet = XLSX.utils.json_to_sheet(formattedData);
+    const worksheet = XLSX.utils.json_to_sheet(formattedList);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Idea Lab Attendance');
 
