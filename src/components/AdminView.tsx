@@ -61,7 +61,6 @@ export const AdminView: React.FC = () => {
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
   const [batchSlot, setBatchSlot] = useState('08:00 - 09:00');
   const [batchReason, setBatchReason] = useState('Idea Lab Work');
-  const [batchSubject, setBatchSubject] = useState('General / Project Work');
   const [markingBatch, setMarkingBatch] = useState(false);
 
   // Single student action status
@@ -351,8 +350,7 @@ export const AdminView: React.FC = () => {
         body: JSON.stringify({
           regNumbers: selectedStudentRegs,
           slot: batchSlot,
-          reason: batchReason,
-          subject: batchSubject
+          reason: batchReason
         })
       });
 
@@ -726,64 +724,104 @@ export const AdminView: React.FC = () => {
                               {(() => {
                                 const todayClasses = Object.entries(expandedStudentData.timetable || {}).filter(([key]) => {
                                   const [day] = key.split('-');
-                                  return day.toLowerCase() === todayDayName.toLowerCase();
+                                  return day && day.toLowerCase() === todayDayName.toLowerCase();
                                 });
 
                                 const displayClasses = todayClasses.length > 0 ? todayClasses : Object.entries(expandedStudentData.timetable || {});
 
-                                if (displayClasses.length === 0) {
+                                if (displayClasses.length > 0) {
                                   return (
-                                    <p className="text-xs text-campus-secondary-light dark:text-campus-secondary-dark py-2">
-                                      No classes scheduled in timetable for today ({todayDayName}).
-                                    </p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                                      {displayClasses.map(([key, cls]: [string, any]) => {
+                                        const timeLabel = formatSlotLabel(key);
+                                        const isMarked = (expandedStudentData.markedSlots || []).includes(key) || (expandedStudentData.markedSlots || []).includes(timeLabel);
+
+                                        return (
+                                          <div key={key} className="p-3 bg-white dark:bg-campus-card-dark rounded-xl border border-campus-border-light dark:border-campus-border-dark space-y-2 shadow-soft-sm">
+                                            <div>
+                                              <div className="flex items-center justify-between">
+                                                <span className="text-[10px] font-mono font-bold text-campus-secondary-light dark:text-campus-secondary-dark uppercase block">
+                                                  {timeLabel}
+                                                </span>
+                                                <span className="text-[9px] font-bold text-campus-secondary-light dark:text-campus-secondary-dark uppercase">
+                                                  {key.split('-')[0]}
+                                                </span>
+                                              </div>
+                                              <p className="text-xs font-bold truncate mt-1">{cls.subject || 'General Class'}</p>
+                                              <p className="text-[10px] text-campus-secondary-light dark:text-campus-secondary-dark">
+                                                Teacher: {cls.teacher || 'N/A'} • Room {cls.room || 'N/A'}
+                                              </p>
+                                            </div>
+
+                                            {isMarked ? (
+                                              <button
+                                                onClick={() => handleCancelSingle(st.regNumber, cls.subject || 'Idea Lab Work', key, timeLabel)}
+                                                disabled={actionLoading}
+                                                className="w-full py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold text-[11px] rounded-lg shadow-soft-sm transition disabled:opacity-50 flex items-center justify-center gap-1"
+                                              >
+                                                <XCircle className="h-3.5 w-3.5" />
+                                                Cancel Attendance
+                                              </button>
+                                            ) : (
+                                              <button
+                                                onClick={() => handleMarkSingle(st, cls.subject || 'Idea Lab Work', cls.teacher || 'Instructor', cls.room || 'Idea Lab', key, timeLabel)}
+                                                disabled={actionLoading}
+                                                className="w-full py-1.5 bg-black text-white dark:bg-white dark:text-black font-bold text-[11px] rounded-lg shadow-soft-sm hover:opacity-90 transition disabled:opacity-50 flex items-center justify-center gap-1"
+                                              >
+                                                <CheckCircle2 className="h-3.5 w-3.5" />
+                                                Mark Present
+                                              </button>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
                                   );
                                 }
 
+                                // Fallback: Render Standard Today Time Slots if student has no custom timetable
                                 return (
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                                    {displayClasses.map(([key, cls]: [string, any]) => {
-                                      const timeLabel = formatSlotLabel(key);
-                                      const isMarked = (expandedStudentData.markedSlots || []).includes(key) || (expandedStudentData.markedSlots || []).includes(timeLabel);
+                                  <div className="space-y-2">
+                                    <p className="text-[11px] text-campus-secondary-light dark:text-campus-secondary-dark">
+                                      No custom timetable configured. Select any time slot below to mark Idea Lab attendance:
+                                    </p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                                      {TIME_SLOTS.filter(s => !s.isLunch).map((slot) => {
+                                        const timeLabel = `${slot.startTime} - ${slot.endTime}`;
+                                        const isMarked = (expandedStudentData.markedSlots || []).includes(timeLabel) || (expandedStudentData.markedSlots || []).includes(slot.id);
 
-                                      return (
-                                        <div key={key} className="p-3 bg-white dark:bg-campus-card-dark rounded-xl border border-campus-border-light dark:border-campus-border-dark space-y-2 shadow-soft-sm">
-                                          <div>
-                                            <div className="flex items-center justify-between">
+                                        return (
+                                          <div key={slot.id} className="p-3 bg-white dark:bg-campus-card-dark rounded-xl border border-campus-border-light dark:border-campus-border-dark space-y-2 shadow-soft-sm">
+                                            <div>
                                               <span className="text-[10px] font-mono font-bold text-campus-secondary-light dark:text-campus-secondary-dark uppercase block">
                                                 {timeLabel}
                                               </span>
-                                              <span className="text-[9px] font-bold text-campus-secondary-light dark:text-campus-secondary-dark uppercase">
-                                                {key.split('-')[0]}
-                                              </span>
+                                              <p className="text-xs font-bold truncate mt-1">Idea Lab Work</p>
                                             </div>
-                                            <p className="text-xs font-bold truncate mt-1">{cls.subject}</p>
-                                            <p className="text-[10px] text-campus-secondary-light dark:text-campus-secondary-dark">
-                                              Teacher: {cls.teacher || 'N/A'} • Room {cls.room || 'N/A'}
-                                            </p>
-                                          </div>
 
-                                          {isMarked ? (
-                                            <button
-                                              onClick={() => handleCancelSingle(st.regNumber, cls.subject, key, timeLabel)}
-                                              disabled={actionLoading}
-                                              className="w-full py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold text-[11px] rounded-lg shadow-soft-sm transition disabled:opacity-50 flex items-center justify-center gap-1"
-                                            >
-                                              <XCircle className="h-3.5 w-3.5" />
-                                              Cancel Attendance
-                                            </button>
-                                          ) : (
-                                            <button
-                                              onClick={() => handleMarkSingle(st, cls.subject, cls.teacher, cls.room, key, timeLabel)}
-                                              disabled={actionLoading}
-                                              className="w-full py-1.5 bg-black text-white dark:bg-white dark:text-black font-bold text-[11px] rounded-lg shadow-soft-sm hover:opacity-90 transition disabled:opacity-50 flex items-center justify-center gap-1"
-                                            >
-                                              <CheckCircle2 className="h-3.5 w-3.5" />
-                                              Mark Present
-                                            </button>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
+                                            {isMarked ? (
+                                              <button
+                                                onClick={() => handleCancelSingle(st.regNumber, 'Idea Lab Work', slot.id, timeLabel)}
+                                                disabled={actionLoading}
+                                                className="w-full py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold text-[11px] rounded-lg shadow-soft-sm transition disabled:opacity-50 flex items-center justify-center gap-1"
+                                              >
+                                                <XCircle className="h-3.5 w-3.5" />
+                                                Cancel Attendance
+                                              </button>
+                                            ) : (
+                                              <button
+                                                onClick={() => handleMarkSingle(st, 'Idea Lab Work', 'Instructor', 'Idea Lab', slot.id, timeLabel)}
+                                                disabled={actionLoading}
+                                                className="w-full py-1.5 bg-black text-white dark:bg-white dark:text-black font-bold text-[11px] rounded-lg shadow-soft-sm hover:opacity-90 transition disabled:opacity-50 flex items-center justify-center gap-1"
+                                              >
+                                                <CheckCircle2 className="h-3.5 w-3.5" />
+                                                Mark Present
+                                              </button>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
                                   </div>
                                 );
                               })()}
@@ -874,19 +912,6 @@ export const AdminView: React.FC = () => {
                         </option>
                       ))}
                     </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold mb-1 text-campus-secondary-light dark:text-campus-secondary-dark uppercase tracking-wider">
-                      Subject / Activity Description
-                    </label>
-                    <input
-                      type="text"
-                      value={batchSubject}
-                      onChange={(e) => setBatchSubject(e.target.value)}
-                      placeholder="e.g. Project Work, Idea Lab Innovation Lab"
-                      className="w-full px-3 py-2 bg-campus-bg-light dark:bg-campus-bg-dark border border-campus-border-light dark:border-campus-border-dark rounded-lg text-xs font-medium"
-                    />
                   </div>
 
                   <div>

@@ -5,6 +5,26 @@ import IdeaLabAttendance from '../models/IdeaLabAttendance.js';
 import AuditLog from '../models/AuditLog.js';
 import { memoryStore } from './memoryDb.js';
 
+// Helper to safely convert Mongoose Map / Object into flat timetable keys
+const safeFlattenTimetableDoc = (ttDoc) => {
+  if (!ttDoc) return {};
+  const timetable = {};
+  const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+
+  days.forEach((d) => {
+    const dayObj = ttDoc[d];
+    if (dayObj) {
+      if (dayObj instanceof Map) {
+        Object.assign(timetable, Object.fromEntries(dayObj));
+      } else if (typeof dayObj === 'object') {
+        Object.assign(timetable, dayObj);
+      }
+    }
+  });
+
+  return timetable;
+};
+
 export const getDashboardStats = async () => {
   if (mongoose.connection.readyState === 1) {
     const totalStudents = await User.countDocuments({ role: 'student' });
@@ -60,15 +80,7 @@ export const getStudentById = async (studentIdOrReg) => {
 
     if (student) {
       const tt = await Timetable.findOne({ userId: student._id });
-      if (tt) {
-        const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
-        days.forEach((d) => {
-          if (tt[d]) {
-            const mapObj = Object.fromEntries(tt[d] || new Map());
-            Object.assign(timetable, mapObj);
-          }
-        });
-      }
+      timetable = safeFlattenTimetableDoc(tt);
       return { student, timetable, labs, attendance };
     }
   }
@@ -79,9 +91,7 @@ export const getStudentById = async (studentIdOrReg) => {
     if (u._id === studentIdOrReg || u.registrationNumber === studentIdOrReg.toUpperCase()) {
       const { password, ...st } = u;
       const memTt = memoryStore.timetables[u._id] || {};
-      ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].forEach((d) => {
-        if (memTt[d]) Object.assign(timetable, memTt[d]);
-      });
+      timetable = safeFlattenTimetableDoc(memTt);
       return { student: st, timetable, labs, attendance };
     }
   }
@@ -115,16 +125,7 @@ export const searchStudentForIdeaLab = async (queryStr) => {
     const student = students.find(s => s.registrationNumber.toUpperCase() === qUpper) || students[0];
 
     const tt = await Timetable.findOne({ userId: student._id });
-    let timetable = {};
-    if (tt) {
-      const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
-      days.forEach((d) => {
-        if (tt[d]) {
-          const mapObj = Object.fromEntries(tt[d] || new Map());
-          Object.assign(timetable, mapObj);
-        }
-      });
-    }
+    const timetable = safeFlattenTimetableDoc(tt);
 
     // Fetch today's marked attendance slots for this student
     const markedRecords = await IdeaLabAttendance.find({
@@ -171,10 +172,7 @@ export const searchStudentForIdeaLab = async (queryStr) => {
 
   const student = matching.find(s => s.registrationNumber.toUpperCase() === qUpper) || matching[0];
   const memTt = memoryStore.timetables[student._id] || {};
-  let timetable = {};
-  ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].forEach((d) => {
-    if (memTt[d]) Object.assign(timetable, memTt[d]);
-  });
+  const timetable = safeFlattenTimetableDoc(memTt);
 
   const markedSlots = memoryStore.ideaLabAttendance
     .filter(r => r.regNumber.toUpperCase() === student.registrationNumber.toUpperCase())
@@ -220,7 +218,6 @@ export const markIdeaLabAttendance = async ({ regNumber, reason, subject, teache
       throw new Error(`Student "${regNumber}" not found.`);
     }
 
-    // Check if duplicate entry exists for same student + slot today
     let record = await IdeaLabAttendance.findOne({
       regNumber: student.registrationNumber,
       slot: slot || 'Slot 1',
@@ -229,7 +226,7 @@ export const markIdeaLabAttendance = async ({ regNumber, reason, subject, teache
 
     if (record) {
       record.reason = reason || 'Idea Lab Work';
-      record.subject = subject || record.subject;
+      record.subject = subject || record.subject || 'Idea Lab Work';
       record.teacher = teacher || record.teacher;
       record.room = room || record.room;
       await record.save();
@@ -242,7 +239,7 @@ export const markIdeaLabAttendance = async ({ regNumber, reason, subject, teache
         branch: student.branch || 'CSE',
         date: new Date(),
         reason: reason || 'Idea Lab Work',
-        subject: subject || 'General',
+        subject: subject || 'Idea Lab Work',
         teacher: teacher || 'Instructor',
         room: room || 'Idea Lab',
         slot: slot || 'Slot 1',
@@ -254,7 +251,7 @@ export const markIdeaLabAttendance = async ({ regNumber, reason, subject, teache
       action: 'MARKED_IDEALAB_ATTENDANCE',
       performedBy: 'Admin',
       targetUser: student.registrationNumber,
-      details: `Marked Idea Lab attendance for ${student.fullName} (${subject || 'General'})`
+      details: `Marked Idea Lab attendance for ${student.fullName} (${slot || 'Slot 1'})`
     }).catch(() => {});
 
     return record;
@@ -279,7 +276,7 @@ export const markIdeaLabAttendance = async ({ regNumber, reason, subject, teache
     branch: student.branch || 'CSE',
     date: new Date().toISOString(),
     reason: reason || 'Idea Lab Work',
-    subject: subject || 'General',
+    subject: subject || 'Idea Lab Work',
     teacher: teacher || 'Instructor',
     room: room || 'Idea Lab',
     slot: slot || 'Slot 1',
@@ -338,7 +335,6 @@ export const getIdeaLabReports = async () => {
     records = memoryStore.ideaLabAttendance;
   }
 
-  // Deduplicate records by Reg No + Date + Time Slot
   const seenKeys = new Set();
   const formattedReport = [];
 
@@ -373,7 +369,7 @@ export const batchMarkIdeaLabAttendance = async ({ regNumbers, reason, subject, 
       const rec = await markIdeaLabAttendance({
         regNumber: reg,
         reason,
-        subject,
+        subject: subject || 'Idea Lab Work',
         teacher,
         room,
         slot,
