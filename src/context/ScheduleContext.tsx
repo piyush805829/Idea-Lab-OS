@@ -210,27 +210,6 @@ export const ScheduleProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       console.warn('Backend login endpoint unavailable, executing client fallback authentication');
     }
 
-    // Client-side instant testing fallback
-    if ((cleanId === 'PCEA25CS123' || cleanName === 'piyush') && password === 'student123') {
-      const dummyToken = 'mock_student_jwt_token';
-      setToken(dummyToken);
-      localStorage.setItem('campusos-token', dummyToken);
-      setData(prev => ({
-        ...prev,
-        profile: {
-          id: 'student_id_001',
-          fullName: 'Piyush',
-          regNumber: 'PCEA25CS123',
-          role: 'student',
-          section: 'B',
-          batch: '2',
-          branch: 'CSE'
-        }
-      }));
-      setIsAuthModalOpen(false);
-      return { success: true, message: 'Login successful' };
-    }
-
     if ((cleanId === 'IDEALAB2026' || cleanName === 'idealab2026' || cleanName === 'idea lab administrator') && password === 'Idealab8058') {
       const dummyToken = 'mock_admin_jwt_token';
       setToken(dummyToken);

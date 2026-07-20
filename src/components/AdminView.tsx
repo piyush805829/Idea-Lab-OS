@@ -134,7 +134,9 @@ export const AdminView: React.FC = () => {
 
   // View student full detail
   const handleViewStudent = async (studentId: string) => {
-    const idToFetch = studentId || 'PCEA25CS123';
+    const idToFetch = studentId;
+    if (!idToFetch) return;
+
     try {
       if (token && token !== 'mock_admin_jwt_token') {
         const res = await fetch(`http://localhost:5000/api/admin/students/${encodeURIComponent(idToFetch)}/details`, {
@@ -153,31 +155,17 @@ export const AdminView: React.FC = () => {
     // Fallback student details view
     setSelectedStudentDetail({
       student: {
-        id: 'student_id_001',
-        fullName: 'Piyush',
-        regNumber: 'PCEA25CS123',
+        id: studentId,
+        fullName: 'Student',
+        regNumber: studentId,
         role: 'student',
-        section: 'B',
-        batch: '2',
+        section: 'A',
+        batch: '1',
         branch: 'CSE'
       },
-      timetable: {
-        'Monday-1': { subject: 'DSA', teacher: 'Dr. Alan', room: 'CS-101', importance: 'important', type: 'lecture' },
-        'Monday-2': { subject: 'DBMS', teacher: 'Dr. Grace', room: 'CS-202', importance: 'can_skip', type: 'lecture' },
-        'Tuesday-1': { subject: 'UI/UX Lab', teacher: 'Prof. Dieter', room: 'Design-Lab', importance: 'can_skip', type: 'lab' },
-        'Wednesday-3': { subject: 'DE', teacher: 'Dr. Claude', room: 'EC-304', importance: 'important', type: 'lecture' },
-        'Thursday-2': { subject: 'DBMS Lab', teacher: 'Dr. Grace', room: 'CS-205', importance: 'can_skip', type: 'lab' },
-        'Friday-1': { subject: 'DBMS', teacher: 'Dr. Grace', room: 'CS-202', importance: 'can_skip', type: 'lecture' }
-      },
-      labs: {
-        'UI/UX Lab': { status: 'completed', lastUpdated: new Date().toISOString() },
-        'DBMS Lab': { status: 'pending', lastUpdated: new Date().toISOString() }
-      },
-      attendance: {
-        'DSA': { present: 14, absent: 2 },
-        'DBMS': { present: 10, absent: 4 },
-        'DE': { present: 12, absent: 1 }
-      }
+      timetable: {},
+      labs: {},
+      attendance: {}
     });
   };
 
