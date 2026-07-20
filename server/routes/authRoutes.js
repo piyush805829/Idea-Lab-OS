@@ -7,14 +7,21 @@ const router = express.Router();
 // POST /api/auth/signup
 router.post('/signup', async (req, res, next) => {
   try {
-    const { fullName, registrationNumber, password, confirmPassword, branch, year, section, batch } = req.body;
+    const registrationNumber = req.body.registrationNumber || req.body.regNumber || req.body.identifier;
+    const { fullName, password, confirmPassword, branch, year, section, batch } = req.body;
 
     if (!fullName || !registrationNumber || !password) {
-      return res.status(400).json({ success: false, message: 'Full Name, Registration Number, and Password are required.' });
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Full Name, Registration Number, and Password are required.' 
+      });
     }
 
     if (confirmPassword && password !== confirmPassword) {
-      return res.status(400).json({ success: false, message: 'Password and Confirm Password do not match.' });
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Password and Confirm Password do not match.' 
+      });
     }
 
     const result = await signupUser({
@@ -41,10 +48,14 @@ router.post('/signup', async (req, res, next) => {
 // POST /api/auth/login
 router.post('/login', async (req, res, next) => {
   try {
-    const { registrationNumber, password } = req.body;
+    const registrationNumber = req.body.registrationNumber || req.body.regNumber || req.body.identifier;
+    const { password } = req.body;
 
     if (!registrationNumber || !password) {
-      return res.status(400).json({ success: false, message: 'Registration Number and Password are required.' });
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Registration Number and Password are required.' 
+      });
     }
 
     const result = await loginUser({ registrationNumber, password });

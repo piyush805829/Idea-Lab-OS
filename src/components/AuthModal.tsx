@@ -69,6 +69,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen }) => {
     const res = await signup({
       fullName,
       regNumber,
+      registrationNumber: regNumber,
       password,
       confirmPassword,
       section,

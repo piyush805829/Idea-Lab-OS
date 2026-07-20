@@ -3,7 +3,8 @@ import api from '../utils/api';
 export const authService = {
   async signup(data: {
     fullName: string;
-    registrationNumber: string;
+    registrationNumber?: string;
+    regNumber?: string;
     password: string;
     confirmPassword?: string;
     branch?: string;
@@ -11,12 +12,25 @@ export const authService = {
     section?: string;
     batch?: string;
   }) {
-    const response = await api.post('/auth/signup', data);
+    const regNo = data.registrationNumber || data.regNumber || '';
+    const payload = {
+      ...data,
+      registrationNumber: regNo,
+      regNumber: regNo
+    };
+    const response = await api.post('/auth/signup', payload);
     return response.data;
   },
 
-  async login(data: { registrationNumber: string; password: string }) {
-    const response = await api.post('/auth/login', data);
+  async login(data: { registrationNumber?: string; regNumber?: string; identifier?: string; password: string }) {
+    const regNo = data.registrationNumber || data.regNumber || data.identifier || '';
+    const payload = {
+      registrationNumber: regNo,
+      regNumber: regNo,
+      identifier: regNo,
+      password: data.password
+    };
+    const response = await api.post('/auth/login', payload);
     return response.data;
   },
 
@@ -31,6 +45,7 @@ export const authService = {
     } finally {
       localStorage.removeItem('campusos_token');
       localStorage.removeItem('idealab_token');
+      localStorage.removeItem('campusos-token');
     }
   }
 };
