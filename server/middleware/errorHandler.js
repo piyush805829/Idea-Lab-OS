@@ -1,12 +1,12 @@
 export const errorHandler = (err, req, res, next) => {
-  console.error('[SERVER ERROR]', err);
+  console.error('[SERVER ERROR]', err.message || err);
 
   // Mongoose duplicate key error (code 11000)
   if (err.code === 11000) {
-    const field = Object.keys(err.keyValue || {})[0] || 'field';
+    const field = Object.keys(err.keyValue || {})[0] || 'registration number';
     return res.status(400).json({
       success: false,
-      message: `A record with this ${field} already exists.`
+      message: `Registration number is already registered.`
     });
   }
 
@@ -24,6 +24,21 @@ export const errorHandler = (err, req, res, next) => {
     return res.status(401).json({
       success: false,
       message: 'Invalid or expired token.'
+    });
+  }
+
+  // Known validation errors
+  if (
+    err.message && (
+      err.message.includes('already registered') ||
+      err.message.includes('Invalid credentials') ||
+      err.message.includes('required') ||
+      err.message.includes('not found')
+    )
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: err.message
     });
   }
 

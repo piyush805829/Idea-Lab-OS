@@ -41,6 +41,13 @@ router.post('/signup', async (req, res, next) => {
       user: result.user
     });
   } catch (error) {
+    if (error.message && (
+      error.message.includes('already registered') || 
+      error.message.includes('do not match') || 
+      error.message.includes('required')
+    )) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
     next(error);
   }
 });
@@ -67,6 +74,12 @@ router.post('/login', async (req, res, next) => {
       user: result.user
     });
   } catch (error) {
+    if (error.message && (
+      error.message.includes('Invalid credentials') || 
+      error.message.includes('not found')
+    )) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
     next(error);
   }
 });
